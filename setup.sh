@@ -1,39 +1,48 @@
 #!/bin/bash
 echo "=== HermesClawZero-ConfigSidecar Setup ==="
 
-# 1. Check Python & Docker
+# 1. Check Dependencies
 if ! command -v python3 &> /dev/null; then echo "[!] Python3 not found."; exit 1; fi
 if ! command -v docker &> /dev/null; then echo "[!] Docker not found."; exit 1; fi
 
-# 2. Dependencies
-python3 -m pip install -r requirements.txt
+# 2. Provider Menu
+echo "Select Primary AI Provider:"
+echo "1. Local Ollama (Docker)"
+echo "2. OpenAI"
+echo "3. Google Gemini"
+echo "4. Anthropic"
+echo "5. OpenRouter"
+read -p "Choice (1-5): " CHOICE
 
-# 3. Environment Config
-touch .env
-source .env 2>/dev/null
+case $CHOICE in
+    1) PROVIDER="ollama"; KEY_VAR="";;
+    2) PROVIDER="openai"; KEY_VAR="OPENAI_API_KEY";;
+    3) PROVIDER="gemini"; KEY_VAR="GEMINI_API_KEY";;
+    4) PROVIDER="anthropic"; KEY_VAR="ANTHROPIC_API_KEY";;
+    5) PROVIDER="openrouter"; KEY_VAR="OPENROUTER_API_KEY";;
+    *) echo "Invalid choice"; exit 1;;
+esac
 
-read -p "Enter OpenClaw API Key [$OPENCLAW_KEY]: " INPUT_OPENCLAW_KEY
-read -p "Enter OpenAI API Key [$OPENAI_API_KEY]: " INPUT_OPENAI_KEY
-read -p "Enter Gemini API Key [$GEMINI_API_KEY]: " INPUT_GEMINI_KEY
-read -p "Enter Anthropic API Key [$ANTHROPIC_API_KEY]: " INPUT_ANTHROPIC_KEY
-read -p "Enter OpenRouter API Key [$OPENROUTER_API_KEY]: " INPUT_OPENROUTER_KEY
-read -p "Enter Database Password [$DB_PASSWORD]: " INPUT_DB_PASSWORD
+KEY=""
+if [ -n "$KEY_VAR" ]; then
+    read -p "Enter $KEY_VAR: " KEY
+fi
 
+# 3. Write .env
 cat <<EOF > .env
+AI_PROVIDER=$PROVIDER
+$KEY_VAR=$KEY
 OPENCLAW_URL=https://openclawmemwin.postarmory.com
-OPENCLAW_KEY=${INPUT_OPENCLAW_KEY:-$OPENCLAW_KEY}
-OPENAI_API_KEY=${INPUT_OPENAI_KEY:-$OPENAI_API_KEY}
-GEMINI_API_KEY=${INPUT_GEMINI_KEY:-$GEMINI_API_KEY}
-ANTHROPIC_API_KEY=${INPUT_ANTHROPIC_KEY:-$ANTHROPIC_API_KEY}
-OPENROUTER_API_KEY=${INPUT_OPENROUTER_KEY:-$OPENROUTER_API_KEY}
+OPENCLAW_KEY=${OPENCLAW_KEY:-"YOUR_KEY_HERE"}
 OPENCLAW_SYNC_DIR=$(pwd)/sync
-DB_PASSWORD=${INPUT_DB_PASSWORD:-$DB_PASSWORD}
+DB_PASSWORD=${DB_PASSWORD:-""}
 OLLAMA_HOST=http://host.docker.internal:11435
 EOF
+echo ".env saved."
 
 # 4. Ollama Setup
-read -p "Run Ollama in Docker? (Y/n): " RUN_DOCKER
-if [[ "$RUN_DOCKER" =~ ^[Yy]$ ]]; then
+if [ "$PROVIDER" == "ollama" ]; then
+    echo "[INFO] Starting Ollama container..."
     docker compose up -d ollama
     sleep 10
     docker exec gbrain-ollama ollama pull nomic-embed-text

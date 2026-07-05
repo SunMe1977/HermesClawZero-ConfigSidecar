@@ -1,14 +1,11 @@
 # === HermesClawZero-ConfigSidecar Setup ===
 Write-Host '=== HermesClawZero-ConfigSidecar Setup ===' -ForegroundColor Cyan
 
-# 1. Check Python & Docker
+# 1. Check Dependencies
 if (-not (Get-Command "python" -ErrorAction SilentlyContinue)) { Write-Host "[!] Python not detected." -ForegroundColor Red; exit }
 if (-not (Get-Command "docker" -ErrorAction SilentlyContinue)) { Write-Host "[!] Docker not detected." -ForegroundColor Red; exit }
 
-# 2. Dependencies
-pip install -r requirements.txt
-
-# 3. Environment Config
+# 2. Environment Config
 $envFile = '.env'
 $config = @{}
 if (Test-Path $envFile) {
@@ -17,39 +14,53 @@ if (Test-Path $envFile) {
     }
 }
 
-function Get-Input { param([string]$key, [string]$prompt, [string]$default) $val = $config[$key]; if ([string]::IsNullOrWhiteSpace($val)) { $val = $default }; $input = Read-Host "$prompt [$val]"; if ([string]::IsNullOrWhiteSpace($input)) { return $val }; return $input }
+# 3. Provider Menu
+Write-Host "Select Primary AI Provider:" -ForegroundColor Cyan
+Write-Host "1. Local Ollama (Docker)"
+Write-Host "2. OpenAI"
+Write-Host "3. Google Gemini"
+Write-Host "4. Anthropic"
+Write-Host "5. OpenRouter"
+$choice = Read-Host "Choice (1-5)"
 
-$OPENCLAW_KEY = Get-Input "OPENCLAW_KEY" "Enter OpenClaw API Key" ""
-$OPENAI_KEY = Get-Input "OPENAI_API_KEY" "Enter OpenAI API Key" ""
-$GEMINI_KEY = Get-Input "GEMINI_API_KEY" "Enter Gemini API Key" ""
-$ANTHROPIC_KEY = Get-Input "ANTHROPIC_API_KEY" "Enter Anthropic API Key" ""
-$OPENROUTER_KEY = Get-Input "OPENROUTER_API_KEY" "Enter OpenRouter API Key" ""
-$DB_PASSWORD = Get-Input "DB_PASSWORD" "Enter DB Password" ""
+$key = ""
+$provider_key_name = ""
+switch ($choice) {
+    "1" { $provider = "ollama" }
+    "2" { $provider = "openai"; $provider_key_name = "OPENAI_API_KEY" }
+    "3" { $provider = "gemini"; $provider_key_name = "GEMINI_API_KEY" }
+    "4" { $provider = "anthropic"; $provider_key_name = "ANTHROPIC_API_KEY" }
+    "5" { $provider = "openrouter"; $provider_key_name = "OPENROUTER_API_KEY" }
+}
 
+if ($provider_key_name) {
+    $key = Read-Host "Enter $provider_key_name"
+}
+
+# 4. Save Config
+$syncDir = (Get-Location).Path + '\sync'
 $content = @"
+AI_PROVIDER=$provider
+$provider_key_name=$key
 OPENCLAW_URL=https://openclawmemwin.postarmory.com
-OPENCLAW_KEY=$OPENCLAW_KEY
-OPENAI_API_KEY=$OPENAI_KEY
-GEMINI_API_KEY=$GEMINI_KEY
-ANTHROPIC_API_KEY=$ANTHROPIC_KEY
-OPENROUTER_API_KEY=$OPENROUTER_KEY
-OPENCLAW_SYNC_DIR=$(Get-Location).Path\sync
-DB_PASSWORD=$DB_PASSWORD
+OPENCLAW_KEY=$($config['OPENCLAW_KEY'])
+OPENCLAW_SYNC_DIR=$syncDir
+DB_PASSWORD=$($config['DB_PASSWORD'])
 OLLAMA_HOST=http://host.docker.internal:11435
 "@
 $content | Out-File -FilePath $envFile -Encoding UTF8
 Write-Host '.env saved.' -ForegroundColor Green
 
-# 4. Ollama Setup
-$runDocker = Read-Host "Run Ollama in Docker? (Y/N)"
-if ($runDocker -eq 'Y') {
+# 5. Optional Ollama Setup
+if ($provider -eq "ollama") {
+    Write-Host "[INFO] Starting Ollama container..." -ForegroundColor Cyan
     docker compose up -d ollama
     Start-Sleep -Seconds 10
     docker exec gbrain-ollama ollama pull nomic-embed-text
     docker exec gbrain-ollama ollama pull llama3.1
 }
 
-# 5. Skills
+# 6. Skills
 $skillDir = [System.IO.Path]::Combine($env:LOCALAPPDATA, 'hermes', 'skills', 'productivity', 'hermesclawzero-memory')
 if (-not (Test-Path $skillDir)) { New-Item -ItemType Directory -Path $skillDir -Force }
 Copy-Item -Path 'hermes-skill/*' -Destination $skillDir -Recurse -Force
