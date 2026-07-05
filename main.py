@@ -1,5 +1,5 @@
 from fastapi import Body, FastAPI, HTTPException, Depends, status
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 import psycopg
 import ollama
@@ -7,6 +7,8 @@ import os
 import threading
 import html
 import secrets
+import json
+from datetime import datetime
 from pydantic import BaseModel
 
 app = FastAPI()
@@ -26,7 +28,7 @@ def get_current_username(credentials: HTTPBasicCredentials = Depends(security)):
     if not (correct_username and correct_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password",
+            detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Basic"},
         )
     return credentials.username
@@ -51,16 +53,20 @@ DB_NAME = os.getenv("DB_NAME", "gbrain")
 DB_USER = os.getenv("DB_USER", "postgres")
 DB_PASSWORD = os.getenv("DB_PASSWORD")
 
+
 def connect_db():
     conn_kwargs = {"host": DB_HOST, "port": DB_PORT, "dbname": DB_NAME, "user": DB_USER, "password": DB_PASSWORD}
     try: return psycopg.connect(**conn_kwargs)
     except psycopg.OperationalError: raise
 
+
 def embedding_to_pgvector_literal(embedding: list[float]) -> str:
     return "[" + ",".join(str(x) for x in embedding) + "]"
 
-OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://host.docker.internal:11434")
+
+OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://host.docker.internal:11435")
 client = ollama.Client(host=OLLAMA_HOST)
+
 
 # ---------------------------------------------------------
 #  CAPTURE & SEARCH
@@ -127,6 +133,34 @@ async def delete_page(page_id: int):
             conn.commit()
     return RedirectResponse(url="/dashboard", status_code=303)
 
+@app.get("/export", dependencies=[Depends(get_current_username)])
+async def export_data():
+    with connect_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT id, content FROM pages")
+            rows = cur.fetchall()
+    return [{"id": r[0], "content": r[1]} for r in rows]
+
+@app.post("/tag_auto/{page_id}", dependencies=[Depends(get_current_username)])
+async def tag_auto(page_id: int):
+    with connect_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT content FROM pages WHERE id = %s", (page_id,))
+            row = cur.fetchone()
+    if not row: raise HTTPException(status_code=404, detail="Not found")
+    
+    prompt = f"Analyze this text and provide 3 comma-separated relevant tags. Only output the tags: {row[0][:500]}"
+    res = client.generate(model="llama3.1:8b", prompt=prompt)
+    tags = res["response"].replace(" ", "").split(",")
+    
+    for tag in tags:
+        if tag:
+            with connect_db() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("INSERT INTO tags (page_id, tag) VALUES (%s, %s)", (page_id, tag))
+                    conn.commit()
+    return {"status": "ok", "tags": tags}
+
 @app.get("/page_html", response_class=HTMLResponse, dependencies=[Depends(get_current_username)])
 async def view_page_html(page_id: int):
     with connect_db() as conn:
@@ -138,13 +172,22 @@ async def view_page_html(page_id: int):
     return f"<html><head><title>Page {page_id}</title></head><body><h1>Page {page_id}</h1><pre>{content}</pre><br><a href='/dashboard'>Back to Dashboard</a></body></html>"
 
 @app.get("/dashboard", response_class=HTMLResponse, dependencies=[Depends(get_current_username)])
-async def dashboard(query: str | None = None):
+async def dashboard(query: str | None = None, page: int = 1):
+    per_page = 20
+    offset = (page - 1) * per_page
+    
     with connect_db() as conn:
         with conn.cursor() as cur:
             if query:
-                cur.execute("SELECT id, content FROM pages WHERE content ILIKE %s ORDER BY id DESC LIMIT 50", (f"%{query}%",))
+                cur.execute(
+                    "SELECT id, content FROM pages WHERE content ILIKE %s ORDER BY id DESC LIMIT %s OFFSET %s",
+                    (f"%{query}%", per_page, offset)
+                )
             else:
-                cur.execute("SELECT id, content FROM pages ORDER BY id DESC LIMIT 50")
+                cur.execute(
+                    "SELECT id, content FROM pages ORDER BY id DESC LIMIT %s OFFSET %s",
+                    (per_page, offset)
+                )
             rows = cur.fetchall()
 
     items = ""
@@ -157,21 +200,28 @@ async def dashboard(query: str | None = None):
                 <input type='hidden' name='page_id' value='{r[0]}'>
                 <button type='submit' style="background: #ff4d4d; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer;" onclick='return confirm("Delete?")'>Delete</button>
             </form>
+            <form action='/tag_auto/{r[0]}' method='post' style='display:inline; float:right; margin-right: 10px;'>
+                <button type='submit' style="background: #28a745; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer;">Auto-Tag</button>
+            </form>
         </li>
         """
-    safe_query = html.escape(query or "")
+
+    prev_link = f'<a href="/dashboard?page={page-1}&query={html.escape(query or "")}">Previous</a>' if page > 1 else ""
+    next_link = f'<a href="/dashboard?page={page+1}&query={html.escape(query or "")}">Next</a>' if len(rows) == per_page else ""
+
     return f"""
     <html>
       <head><title>Memory Dashboard</title>
         <style>body {{ font-family: sans-serif; background-color: #121212; color: #fff; padding: 20px; }} h1 {{ border-bottom: 2px solid #333; padding-bottom: 10px; }} input {{ padding: 8px; width: 300px; border-radius: 4px; border: 1px solid #444; background: #1e1e1e; color: white; }} button {{ padding: 8px 16px; background: #4da6ff; color: white; border: none; border-radius: 4px; cursor: pointer; }} ul {{ list-style-type: none; padding: 0; margin-top: 20px; }}</style>
       </head>
       <body>
-        <h1>Memory Dashboard</h1>
+        <h1>Memory Dashboard (Page {page})</h1>
         <form method="get" action="/dashboard">
-          <input type="text" name="query" placeholder="Suche..." value="{safe_query}">
+          <input type="text" name="query" placeholder="Suche..." value="{html.escape(query or "")}">
           <button type="submit">Search</button>
         </form>
         <ul>{items}</ul>
+        <div style="margin-top: 20px;">{prev_link} {next_link}</div>
       </body>
     </html>
     """

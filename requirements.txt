@@ -5,3 +5,4 @@ ollama
 requests
 psutil
 python-dotenv
+mcp
