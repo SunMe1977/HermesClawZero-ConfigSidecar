@@ -24,6 +24,9 @@ if /I "%PROVIDER%"=="ollama" (
 	docker compose up --build -d
 )
 
+echo [START] Waiting for API health at http://localhost:8010/healthz ...
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$ok=$false; for($i=0; $i -lt 30; $i++){ try { $r=Invoke-WebRequest -UseBasicParsing -Uri 'http://localhost:8010/healthz' -TimeoutSec 2; if($r.StatusCode -ge 200 -and $r.StatusCode -lt 400){ $ok=$true; break } } catch {}; Start-Sleep -Seconds 1 }; if($ok){ Write-Host '[START] API is healthy.' } else { Write-Host '[START] API health check timed out; continuing anyway.' }"
+
 echo [START] Launching sync_watchdog.py in background
 start "" python sync_watchdog.py
 

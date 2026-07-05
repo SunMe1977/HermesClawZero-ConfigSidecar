@@ -22,6 +22,15 @@ else
 	docker compose up --build -d
 fi
 
+echo "[START] Waiting for API health at http://localhost:8010/healthz ..."
+for i in $(seq 1 30); do
+	if curl -fsS "http://localhost:8010/healthz" >/dev/null 2>&1; then
+		echo "[START] API is healthy."
+		break
+	fi
+	sleep 1
+done
+
 echo "[START] Launching sync_watchdog.py in background"
 python3 sync_watchdog.py &
 
