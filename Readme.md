@@ -42,11 +42,15 @@ You can install this project automatically using an AI agent (like OpenClaw or H
 - **Dashboard**: `http://localhost:8010/dashboard`
 
 ### Runtime Provider Override (Compose-First)
-To avoid accidental provider changes from `.env`, runtime provider selection in `docker-compose.yml` uses `COMPOSE_AI_PROVIDER` with default `openrouter`.
+Runtime provider selection in `docker-compose.yml` now uses a clear precedence so existing Windows/Ollama setups keep working while still allowing explicit compose overrides.
 
-- Effective runtime provider: `AI_PROVIDER=${COMPOSE_AI_PROVIDER:-openrouter}`
-- If `COMPOSE_AI_PROVIDER` is unset, API runs with `openrouter`
-- `.env` key `AI_PROVIDER` is no longer authoritative for runtime inside Compose
+- Effective runtime provider: `AI_PROVIDER=${COMPOSE_AI_PROVIDER:-${AI_PROVIDER:-openrouter}}`
+- Priority order:
+    1. `COMPOSE_AI_PROVIDER` (explicit runtime override)
+    2. `.env` value `AI_PROVIDER` (backward compatible)
+    3. fallback `openrouter`
+
+Windows + Ollama still works unchanged when `.env` has `AI_PROVIDER=ollama`.
 
 Example:
 ```bash

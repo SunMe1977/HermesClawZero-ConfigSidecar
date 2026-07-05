@@ -40,9 +40,11 @@ services:
       DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
       API_URL: ${API_URL}
       API_KEY: ${API_KEY:?API_KEY is required}
-      # Keep runtime provider independent from .env AI_PROVIDER.
-      # Default is openrouter unless COMPOSE_AI_PROVIDER is explicitly set.
-      AI_PROVIDER: ${COMPOSE_AI_PROVIDER:-openrouter}
+      # Runtime selection priority:
+      # 1) COMPOSE_AI_PROVIDER (explicit compose runtime override)
+      # 2) AI_PROVIDER from .env (backward compatible, incl. Windows/Ollama setups)
+      # 3) openrouter (safe default)
+      AI_PROVIDER: ${COMPOSE_AI_PROVIDER:-${AI_PROVIDER:-openrouter}}
       EMBEDDING_PROVIDER: auto
       SYNC_DIR: ${SYNC_DIR}
       OLLAMA_HOST: ${OLLAMA_HOST}
