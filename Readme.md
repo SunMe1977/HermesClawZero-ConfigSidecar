@@ -110,7 +110,7 @@ This project provides a robust CLI (`scripts/memory.py`), a drag-and-drop ingest
 
 ## Database View
 
-![Database (PostgreSQL)](images/db.png "PostgreSQL memory data view")
+<img src="images/db.png" alt="Database (PostgreSQL)" title="PostgreSQL memory data view" width="50%" />
 
 ## Accessing the Dashboard
 
