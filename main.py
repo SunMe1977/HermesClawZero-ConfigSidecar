@@ -1595,11 +1595,30 @@ async def dashboard(
 
     watchdog_pending_text = "n/a"
     watchdog_updated_text = "unknown"
+    watchdog_pending_value = WATCHDOG_STATUS.get("pending")
     if WATCHDOG_STATUS.get("pending") is not None:
         watchdog_pending_text = str(WATCHDOG_STATUS["pending"])
     if WATCHDOG_STATUS.get("updated_at") is not None:
         age_seconds = max(0, int(time.time()) - int(WATCHDOG_STATUS["updated_at"]))
         watchdog_updated_text = f"{age_seconds}s ago"
+
+    watchdog_badge_html = "<span style='color:#9ca3af;'>Watchdog pending: n/a</span>"
+    if watchdog_pending_value is not None:
+        pending_int = max(0, int(watchdog_pending_value))
+        if pending_int > 0:
+            watchdog_badge_html = (
+                "<span style='display:inline-flex; align-items:center; gap:8px; color:#22c55e; font-weight:700;'>"
+                "<span style='width:10px; height:10px; border-radius:50%; background:#22c55e; display:inline-block; box-shadow:0 0 0 2px rgba(34,197,94,0.25);'></span>"
+                f"Watchdog pending: {pending_int}"
+                "</span>"
+            )
+        else:
+            watchdog_badge_html = (
+                "<span style='display:inline-flex; align-items:center; gap:8px; color:#93c5fd; font-weight:600;'>"
+                "<span style='width:10px; height:10px; border-radius:50%; background:#93c5fd; display:inline-block;'></span>"
+                "Watchdog pending: 0"
+                "</span>"
+            )
 
     total_pages = math.ceil(total_items / per_page)
     
@@ -1678,11 +1697,12 @@ async def dashboard(
 
     return f"""
     <html>
-      <head><title>Memory Dashboard</title>
+            <head><title>Memory Dashboard</title>
+                <meta http-equiv="refresh" content="5">
         <style>body {{ font-family: sans-serif; background-color: #121212; color: #fff; padding: 20px; }} h1 {{ border-bottom: 2px solid #333; padding-bottom: 10px; }} input {{ padding: 8px; width: 300px; border-radius: 4px; border: 1px solid #444; background: #1e1e1e; color: white; }} button {{ padding: 8px 16px; background: #4da6ff; color: white; border: none; border-radius: 4px; cursor: pointer; }} ul {{ list-style-type: none; padding: 0; margin-top: 20px; }}</style>
       </head>
       <body>
-                <h1>Memory Dashboard (Messages: {total_items} | Watchdog pending: {watchdog_pending_text})</h1>
+                <h1>Memory Dashboard (Messages: {total_items} | {watchdog_badge_html})</h1>
                 <p style="margin: 6px 0 14px; color:#bcd;">Watchdog status updated: {watchdog_updated_text}</p>
                 {optimizer_banner}
             {dry_run_banner}
