@@ -48,9 +48,13 @@ if ($provider_key_name) {
 
 # 4. Save Config
 $syncDir = (Get-Location).Path + '\sync'
+# 4. Save Config
+$syncDir = (Get-Location).Path + '\sync'
 $API_KEY = Get-Input "API_KEY" "Enter API Key" "YOUR_KEY_HERE"
 $DASHBOARD_PASS = Get-Input "DASHBOARD_PASSWORD" "Enter Dashboard Password (for web login)" "admin"
 $DB_PASSWORD = Get-Input "DB_PASSWORD" "Enter Database Password" ""
+$TELEGRAM_TOKEN = Get-Input "TELEGRAM_BOT_TOKEN" "Enter Telegram Bot Token (optional)" ""
+$TELEGRAM_CHAT_ID = Get-Input "TELEGRAM_CHAT_ID" "Enter Telegram Chat ID (optional)" ""
 
 $content = @"
 AI_PROVIDER=$provider
@@ -60,6 +64,8 @@ API_KEY=$API_KEY
 SYNC_DIR=$syncDir
 DB_PASSWORD=$DB_PASSWORD
 DASHBOARD_PASSWORD=$DASHBOARD_PASS
+TELEGRAM_BOT_TOKEN=$TELEGRAM_TOKEN
+TELEGRAM_CHAT_ID=$TELEGRAM_CHAT_ID
 OLLAMA_HOST=http://host.docker.internal:11435
 "@
 $content | Out-File -FilePath $envFile -Encoding UTF8
