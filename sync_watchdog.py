@@ -10,7 +10,23 @@ except ModuleNotFoundError:
     def load_dotenv():
         return False
 
+def _load_env_file_fallback(path: str = ".env"):
+    if not os.path.exists(path):
+        return
+    with open(path, "r", encoding="utf-8") as f:
+        for raw_line in f:
+            line = raw_line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            key = key.strip().lstrip("\ufeff")
+            value = value.strip()
+            if key and key not in os.environ:
+                os.environ[key] = value
+
+
 load_dotenv()
+_load_env_file_fallback()
 
 # Configuration
 _default_db = os.path.join(os.getenv("LOCALAPPDATA", ""), "hermes", "state.db")
