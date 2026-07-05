@@ -60,6 +60,20 @@ class ArchiveSelectionRequest(BaseModel):
     page_ids: list[int]
     archive_reason: str = "manual_review"
 
+
+class WatchdogStatusRequest(BaseModel):
+    pending: int
+    last_synced_id: int
+    latest_source_id: int
+
+
+WATCHDOG_STATUS = {
+    "pending": None,
+    "last_synced_id": None,
+    "latest_source_id": None,
+    "updated_at": None,
+}
+
 # Auth Helpers
 def _build_dashboard_session_token(username: str) -> str:
     issued_at = str(int(time.time()))
@@ -1298,6 +1312,15 @@ async def transcribe(file: UploadFile = File(...)):
         if temp_path and os.path.exists(temp_path):
             os.remove(temp_path)
 
+
+@app.post("/watchdog/status", dependencies=[Depends(require_api_key)])
+async def watchdog_status_update(body: WatchdogStatusRequest):
+    WATCHDOG_STATUS["pending"] = max(0, int(body.pending))
+    WATCHDOG_STATUS["last_synced_id"] = int(body.last_synced_id)
+    WATCHDOG_STATUS["latest_source_id"] = int(body.latest_source_id)
+    WATCHDOG_STATUS["updated_at"] = int(time.time())
+    return {"status": "ok"}
+
 @app.get("/search")
 async def search(query: str = "", limit: int = 5, rerank_results: bool = False):
     if query.strip() == "":
@@ -1570,6 +1593,14 @@ async def dashboard(
             status_code=500,
         )
 
+    watchdog_pending_text = "n/a"
+    watchdog_updated_text = "unknown"
+    if WATCHDOG_STATUS.get("pending") is not None:
+        watchdog_pending_text = str(WATCHDOG_STATUS["pending"])
+    if WATCHDOG_STATUS.get("updated_at") is not None:
+        age_seconds = max(0, int(time.time()) - int(WATCHDOG_STATUS["updated_at"]))
+        watchdog_updated_text = f"{age_seconds}s ago"
+
     total_pages = math.ceil(total_items / per_page)
     
     items = ""
@@ -1651,7 +1682,8 @@ async def dashboard(
         <style>body {{ font-family: sans-serif; background-color: #121212; color: #fff; padding: 20px; }} h1 {{ border-bottom: 2px solid #333; padding-bottom: 10px; }} input {{ padding: 8px; width: 300px; border-radius: 4px; border: 1px solid #444; background: #1e1e1e; color: white; }} button {{ padding: 8px 16px; background: #4da6ff; color: white; border: none; border-radius: 4px; cursor: pointer; }} ul {{ list-style-type: none; padding: 0; margin-top: 20px; }}</style>
       </head>
       <body>
-        <h1>Memory Dashboard (Messages: {total_items})</h1>
+                <h1>Memory Dashboard (Messages: {total_items} | Watchdog pending: {watchdog_pending_text})</h1>
+                <p style="margin: 6px 0 14px; color:#bcd;">Watchdog status updated: {watchdog_updated_text}</p>
                 {optimizer_banner}
             {dry_run_banner}
             {restore_banner}

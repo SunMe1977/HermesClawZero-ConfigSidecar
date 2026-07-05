@@ -65,6 +65,7 @@ FAILED_IDS_FILE = pathlib.Path("sync_failed_ids.json")
 MAX_MESSAGES_PER_CYCLE = int(os.getenv("WATCHDOG_MAX_MESSAGES_PER_CYCLE", "50"))
 REQUEST_TIMEOUT_SECONDS = int(os.getenv("WATCHDOG_REQUEST_TIMEOUT_SECONDS", "20"))
 MAX_RETRIES_PER_MESSAGE = int(os.getenv("WATCHDOG_MAX_RETRIES_PER_MESSAGE", "5"))
+STATUS_URL = BASE_URL.rstrip("/") + "/watchdog/status"
 
 
 def _api_reachable() -> bool:
@@ -74,6 +75,24 @@ def _api_reachable() -> bool:
         return resp.status_code < 500
     except Exception:
         return False
+
+
+def _post_watchdog_status(last_synced_id: int, latest_source_id: int):
+    pending = max(0, latest_source_id - last_synced_id)
+    try:
+        requests.post(
+            STATUS_URL,
+            params={"key": API_KEY},
+            json={
+                "pending": pending,
+                "last_synced_id": int(last_synced_id),
+                "latest_source_id": int(latest_source_id),
+            },
+            timeout=min(8, REQUEST_TIMEOUT_SECONDS),
+        )
+    except Exception:
+        # Status publishing is best-effort and must never stop syncing.
+        pass
 
 def get_last_synced_id():
     if LAST_ID_FILE.exists():
@@ -123,6 +142,10 @@ def sync_messages():
     cursor = conn.cursor()
     
     last_id = get_last_synced_id()
+
+    cursor.execute("SELECT COALESCE(MAX(id), 0) FROM messages")
+    latest_source_id = int(cursor.fetchone()[0] or 0)
+    _post_watchdog_status(last_id, latest_source_id)
     
     # Query for new messages
     cursor.execute(
@@ -148,6 +171,7 @@ def sync_messages():
                 )
                 resp.raise_for_status()
                 save_last_synced_id(msg_id)
+                _post_watchdog_status(msg_id, latest_source_id)
                 _clear_failed_id(failed_counts, msg_id)
             except requests.HTTPError:
                 status_code = resp.status_code if "resp" in locals() else 0
@@ -177,6 +201,7 @@ def sync_messages():
                         "to keep sync progressing."
                     )
                     save_last_synced_id(msg_id)
+                    _post_watchdog_status(msg_id, latest_source_id)
                     _clear_failed_id(failed_counts, msg_id)
                     continue
 
