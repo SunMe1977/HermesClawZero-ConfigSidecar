@@ -19,6 +19,7 @@ services:
       dockerfile: Dockerfile.api
     depends_on:
       - db
+      - ollama
     env_file:
       - .env
     ports:
@@ -29,7 +30,18 @@ services:
       DB_NAME: gbrain
       DB_USER: postgres
       DB_PASSWORD: ${DB_PASSWORD}
-      OLLAMA_HOST: http://host.docker.internal:11434
+      OLLAMA_HOST: http://ollama:11434
+
+  ollama:
+    build:
+      context: .
+      dockerfile: Dockerfile.ollama
+    container_name: gbrain-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
 
 volumes:
   pgdata:
+  ollama_data:

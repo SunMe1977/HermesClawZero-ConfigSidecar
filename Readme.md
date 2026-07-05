@@ -12,7 +12,7 @@ The **HermesClawZero-ConfigSidecar** is a modular, automation-first sidecar serv
 
 ## Quick Start (One-Click Setup)
 
-No manual configuration needed. Just run the setup script for your OS. It will verify Python, Docker, install dependencies, and generate your `.env` file automatically.
+No manual configuration needed. Just run the setup script for your OS. It will verify dependencies, configure your `.env`, and optionally setup **Ollama** in Docker with required models (`nomic-embed-text`, `llama3.1`).
 
 ### Windows
 1. Double-click **`setup.bat`**.
@@ -21,6 +21,14 @@ No manual configuration needed. Just run the setup script for your OS. It will v
 1. Run **`bash setup.sh`**.
 
 *(After the first run, update the `OPENCLAW_KEY` in the generated `.env` file with your secret.)*
+
+---
+## Requirements
+- Python 3.11+
+- Docker Desktop
+- [Ollama](https://ollama.com/) (Optional: The setup script can run this for you in Docker)
+
+---
 
 ## The Architecture
 The project follows a decoupled "sidecar" pattern:
@@ -52,8 +60,10 @@ This project provides a robust CLI (`scripts/memory.py`), a drag-and-drop ingest
 
 <a href="https://github.com/nousresearch/hermes-agent"><img src="https://cdn.jsdelivr.net/gh/selfhst/icons/png/hermes-agent.png" alt="Hermes Agent" width="30%"></a>
 <a href="https://openclaw.ai"><img src="https://openclaw.ai/logo.png" alt="OpenClaw" width="30%"></a>
+<a href="https://ollama.com/"><img src="https://ollama.com/public/ollama.png" alt="Ollama" width="30%"></a>
 
 <ul>
 <li><a href="https://github.com/nousresearch/hermes-agent">Hermes Agent GitHub</a></li>
 <li><a href="https://openclaw.ai">OpenClaw Website</a></li>
+<li><a href="https://ollama.com">Ollama Website</a></li>
 </ul>
