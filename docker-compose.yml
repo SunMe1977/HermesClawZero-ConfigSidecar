@@ -8,7 +8,7 @@ services:
       - "5666:5432"
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: JH!§$2121
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
       POSTGRES_DB: gbrain
     volumes:
       - pgdata:/var/lib/postgresql/data
@@ -28,7 +28,7 @@ services:
       DB_PORT: 5432
       DB_NAME: gbrain
       DB_USER: postgres
-      DB_PASSWORD: "JH!§$2121"
+      DB_PASSWORD: ${DB_PASSWORD}
       OLLAMA_HOST: http://host.docker.internal:11434
 
 volumes:

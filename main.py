@@ -33,7 +33,7 @@ DB_HOST = os.getenv("DB_HOST", "gbrain-postgres")
 DB_PORT = int(os.getenv("DB_PORT", "5432"))
 DB_NAME = os.getenv("DB_NAME", "gbrain")
 DB_USER = os.getenv("DB_USER", "postgres")
-DB_PASSWORD = os.getenv("DB_PASSWORD", "JH!§$2121")
+DB_PASSWORD = os.getenv("DB_PASSWORD")
 
 
 def connect_db():
