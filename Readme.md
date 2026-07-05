@@ -1,4 +1,12 @@
-# HermesClawZero-ConfigSidecar
+```text
+    __  __                                  ________                
+   / / / /__  _________ ___  ___  _____    / ____/ /___ _      ______
+  / /_/ / _ \/ ___/ __ `__ \/ _ \/ ___/   / /   / / __ `/ | /| / / __ \
+ / __  /  __/ /  / / / / / /  __(__  )   / /___/ / /_/ /| |/ |/ / /_/ /
+/_/ /_/\___/_/  /_/ /_/ /_/\___/____/    \____/_/\__,_/ |__/|__/\____/ 
+                                                                       
+                     ConfigSidecar - Persistent Memory
+```
 
 The **HermesClawZero-ConfigSidecar** is a modular, automation-first sidecar service designed to add persistent long-term memory to AI agents like Hermes. 
 
@@ -69,3 +77,6 @@ This project provides a robust CLI (`scripts/memory.py`), a drag-and-drop ingest
 
 ---
 *Built with ❤️ for AI Agent autonomy.*
+
+[![Hermes Agent](https://dashboardicons.com/icons/external/hermes-agent)](https://github.com/nousresearch/hermes-agent)
+[![OpenClaw](https://openclaw.ai/logo.png)](https://openclaw.ai)
