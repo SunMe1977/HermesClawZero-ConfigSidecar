@@ -242,7 +242,7 @@ def sync_messages() -> tuple[bool, int]:
             break
     
     conn.close()
-            return True, processed_count
+    return True, processed_count
 
 if __name__ == "__main__":
     print("[WATCHDOG] Starting memory sync service...")
