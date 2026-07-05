@@ -1,271 +1,159 @@
-![Logo](images/logo.webp "HermesClaw Zero‑Config Sidecar")
+﻿![Logo](images/logo.webp "HermesClaw Zero-Config Sidecar")
 
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)
 ![Docker](https://img.shields.io/badge/docker-required-2496ED.svg)
 
-```text
-    __  __                                  ________                
-   / / / /__  _________ ___  ___  _____    / ____/ /___ _      ______
-  / /_/ / _ \/ ___/ __ `__ \/ _ \/ ___/   / /   / / __ `/ | /| / / __ \
- / __  /  __/ /  / / / / / /  __(__  )   / /___/ / /_/ /| |/ |/ / /_/ /
-/_/ /_/\___/_/  /_/ /_/ /_/\___/____/    \____/_/\__,_/ |__/|__/\____/ 
-                                                                       
-                     ConfigSidecar - Persistent Memory
-```
+# HermesClaw Zero-Config Sidecar
+Persistent Memory for AI Agents (Hermes, OpenClaw)
+Self-hosted | Zero-Config | PostgreSQL + pgvector | Multi-Tenant
 
-The **HermesClawZero-ConfigSidecar** is a practical, self-hosted sidecar that adds persistent long-term memory to AI agents like Hermes and OpenClaw.
+The HermesClawZero-ConfigSidecar is a practical sidecar that gives AI agents durable, queryable long-term memory.
 
 ## Why This Exists
-- Large-context models still forget important details between sessions.
-- Bigger context windows are expensive and still lossy in long workflows.
-- Agents need durable, queryable memory to stay useful over time.
-- This sidecar provides that memory with simple deployment and local control.
+- Session context disappears and important details are lost over time.
+- Very large prompts are expensive and still lossy in longer workflows.
+- Agents need durable memory that can be searched, filtered, and maintained.
 
-## Quick Start (One-Click Setup)
+## Quick Start
+Run the setup script for your OS. It verifies dependencies, creates `.env`, and can optionally set up Ollama.
 
-Run the setup script for your OS. It verifies dependencies, creates your `.env`, and can optionally set up **Ollama** in Docker.
-
-### 🤖 Fastest Start (Hermes/OpenClaw)
-Copy and paste this exactly into Hermes or OpenClaw:
+### Fastest Start (Hermes/OpenClaw)
+Paste this into Hermes or OpenClaw:
 
 ```text
 Install this project from GitHub:
 https://github.com/SunMe1977/HermesClawZero-ConfigSidecar
 ```
 
-That is enough for most users.
-
 ### Manual Setup
-- **Windows**: Double-click `setup.bat`.
-- **Linux/macOS**: Run `bash setup.sh`.
+- Windows: `setup.bat`
+- Linux/macOS: `bash setup.sh`
 
-### Start The Stack
-- **Windows**: Run `start.bat`
-- **Linux/macOS**: Run `./start.sh`
-- **API docs**: `http://localhost:8010/docs`
-- **Health check**: `http://localhost:8010/healthz`
-- **Dashboard**: `http://localhost:8010/dashboard`
+### Start the Stack
+- Windows: `start.bat`
+- Linux/macOS: `./start.sh`
+- API docs: `http://localhost:8010/docs`
+- Dashboard: `http://localhost:8010/dashboard`
+- Health: `http://localhost:8010/healthz`
 
-### Runtime Provider Override (Compose-First)
-Runtime provider selection in `docker-compose.yml` now uses a clear precedence so existing Windows/Ollama setups keep working while still allowing explicit compose overrides.
+## Runtime Provider Override (Compose-First)
+Runtime provider precedence in Compose:
+1. `COMPOSE_AI_PROVIDER`
+2. `AI_PROVIDER`
+3. fallback `openrouter`
 
-- Effective runtime provider: `AI_PROVIDER=${COMPOSE_AI_PROVIDER:-${AI_PROVIDER:-openrouter}}`
-- Priority order:
-    1. `COMPOSE_AI_PROVIDER` (explicit runtime override)
-    2. `.env` value `AI_PROVIDER` (backward compatible)
-    3. fallback `openrouter`
-
-Windows + Ollama still works unchanged when `.env` has `AI_PROVIDER=ollama`.
+Effective runtime expression:
+`AI_PROVIDER=${COMPOSE_AI_PROVIDER:-${AI_PROVIDER:-openrouter}}`
 
 Example:
 ```bash
 COMPOSE_AI_PROVIDER=openrouter docker compose up -d --force-recreate api
 ```
 
+Windows + Ollama remains compatible when `.env` contains `AI_PROVIDER=ollama`.
+
 ---
+
 ## Requirements
 - Python 3.11+
 - Docker Desktop
-- [Ollama](https://ollama.com/) (Optional: The setup script can run this for you in Docker)
+- Optional: Ollama (local embeddings)
 
 ## Environment Variables
-Required runtime variables (set in `.env`, no secrets in repository):
-
+Set these in `.env` (never commit secrets):
 - `API_KEY`
 - `DB_PASSWORD`
-- One provider key based on your setup: `OPENROUTER_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, or local Ollama
-- Optional provider/runtime selectors: `AI_PROVIDER`, `EMBEDDING_PROVIDER`, `COMPOSE_AI_PROVIDER`
+- Provider key depending on setup:
+  - `OPENROUTER_API_KEY`
+  - `OPENAI_API_KEY`
+  - `GEMINI_API_KEY`
+  - `ANTHROPIC_API_KEY`
+- Runtime selectors:
+  - `AI_PROVIDER`
+  - `EMBEDDING_PROVIDER`
+  - `COMPOSE_AI_PROVIDER`
 
-## Security Note
-- Multi-tenant isolation is active via `chat_id` and `scope_id` filtering in capture/search paths.
-- Dashboard access is protected via Basic Auth; change the default dashboard password before public exposure.
-- Keep `.env` local/private and never commit API keys.
+## Security Notes
+- Multi-tenant isolation is active via `chat_id` + `scope_id` filtering.
+- Dashboard is protected by Basic Auth.
+- API routes use `x-api-key`/`?key=` checks.
+- Keep `.env` private and rotate keys if exposed.
 
 ## Deployment
-- Standard deployment is Docker Compose (`start.bat` on Windows or `./start.sh` on Linux/macOS).
-- For provider overrides at runtime, set `COMPOSE_AI_PROVIDER` before `docker compose up -d --force-recreate api`.
-- Verify service health at `http://localhost:8010/healthz` and API version/provider state at `http://localhost:8010/version`.
+Standard deployment uses Docker Compose (`start.bat` or `./start.sh`).
 
-## Provider Support (No-Ollama Ready)
-The setup options are now wired to real runtime behavior, including non-Ollama deployments.
+Recommended verification after start:
+- `http://localhost:8010/healthz`
+- `http://localhost:8010/version`
 
-| Setup Option | AI_PROVIDER | Embedding Path Used by `/capture` and `/search` | Works Without Ollama? | Required Key(s) |
-|---|---|---|---|---|
-| 1. Local Ollama (Docker) | `ollama` | Ollama local embeddings (`nomic-embed-text`) | No | None |
-| 2. OpenAI | `openai` | OpenAI embeddings API | Yes | `OPENAI_API_KEY` |
-| 3. Google Gemini | `gemini` | Gemini embeddings API | Yes | `GEMINI_API_KEY` |
-| 4. Anthropic | `anthropic` | Anthropic-compatible mode with configurable embedding provider (`openrouter`, `openai`, or `gemini`) | Yes | `ANTHROPIC_API_KEY` plus an embedding key |
-| 5. OpenRouter | `openrouter` | OpenRouter embeddings API | Yes | `OPENROUTER_API_KEY` |
+## Release Hardening Status
+Implemented:
+- Multi-tenant memory isolation (`chat_id` + `scope_id`)
+- OpenRouter retry/backoff + degraded fallback behavior
+- Per-IP rate limiting for `/capture` and `/search`
+- Startup cleanup of orphaned embeddings
 
-### Why We Need Multiple Providers
-- **Reliability**: If one provider has limits, latency, or outages, you can switch quickly.
-- **Cost control**: Different teams optimize for local runtime costs (Ollama) or API spend (cloud providers).
-- **Compliance and region constraints**: Some environments require specific hosted services.
-- **Performance tuning**: Embedding quality, speed, and availability differ by provider.
-- **Anthropic compatibility**: Anthropic is supported for your primary provider selection, while embeddings are routed through a dedicated embedding backend for memory indexing.
-
-### Supported Services
-- **Memory storage**: PostgreSQL + pgvector
-- **Embedding backends**: Ollama, OpenAI, Gemini, OpenRouter
-- **Primary provider modes**: Ollama, OpenAI, Gemini, Anthropic, OpenRouter
-- **Web/API services**: FastAPI endpoints (`/capture`, `/search`, `/dashboard`, `/healthz`, `/version`)
+Optional next hardening steps:
+- PostgreSQL auth hardening (`scram-sha-256`)
+- Scheduled `pg_dump` backup script
 
 ---
 
-## The Architecture
-The project follows a decoupled "sidecar" pattern:
+## Provider Support
+| Mode | AI_PROVIDER | Embeddings | Ollama Required | Keys |
+|------|-------------|------------|-----------------|------|
+| Local Ollama | `ollama` | `nomic-embed-text` | Yes | None |
+| OpenAI | `openai` | OpenAI embeddings | No | `OPENAI_API_KEY` |
+| Gemini | `gemini` | Gemini embeddings | No | `GEMINI_API_KEY` |
+| Anthropic | `anthropic` | via `openrouter`/`openai`/`gemini` | No | `ANTHROPIC_API_KEY` + embedding key |
+| OpenRouter | `openrouter` | OpenRouter embeddings | No | `OPENROUTER_API_KEY` |
 
-```mermaid
-flowchart LR
-    A[Hermes or OpenClaw Agent] --> B[Config Sidecar API]
-    E[sync files and watchdog] --> B
-    B --> C[(PostgreSQL plus pgvector)]
-    B --> D[Embedding or LLM Provider]
-    B --> F[Dashboard and Optimizer]
-```
-
-<picture>
-    <source srcset="images/architecture-diagram.webp" type="image/webp">
-    <img src="images/architecture-diagram.png" alt="Architecture diagram" width="100%">
-</picture>
-
-If your Markdown viewer does not render Mermaid, use this fallback:
-
-```text
-Hermes/OpenClaw Agent
-          |
-          v
-Config Sidecar API <--- sync files + watchdog
-     |           |            \
-     v           v             v
-PostgreSQL   Embedding/LLM   Dashboard/Optimizer
- + pgvector    Provider
-```
-
-1.  **Capture**: The agent (Hermes) appends session summaries and significant findings to a local `sync/` directory.
-2.  **Sync (The Watchdog)**: A background service (`memory_sync.py`) monitors the `sync/` directory and `inbox/`. When new files appear, it automatically ingests them.
-3.  **Persistence**: The content is posted to a remote or local memory service (vector store), making your agent's history queryable via semantic search.
-
-## Performance Snapshot (Local)
-These are example local development measurements to make behavior concrete. Re-run on your hardware and publish your own measured numbers.
-
-| Metric | Example Result |
-|---|---|
-| Hybrid memory retrieval | ~18 ms |
-| PostgreSQL lexical search | ~12 ms |
-| API startup (warm dependencies) | ~0.8 s |
-| API RAM usage (idle) | ~70 MB |
-| Docker stack startup | ~4 s |
+## Architecture
+Sidecar flow:
+- Agent -> Sidecar API
+- Sidecar API -> PostgreSQL + pgvector
+- Sidecar API -> Embedding/LLM provider
+- Sidecar API -> Dashboard + Optimizer
+- Watchdog -> syncs local files into memory
 
 ## Feature Comparison
-| Feature | Default Agent Setup | HermesClaw Zero-Config Sidecar |
+| Feature | Default Agent Setup | Zero-Config Sidecar |
 |---|---|---|
 | Persistent memory across sessions | Partial | Yes |
 | Self-hosted data path | Varies | Yes |
-| PostgreSQL-based storage | No | Yes |
-| Dashboard operations and controls | No | Yes |
-| Zero-config setup scripts | No | Yes |
+| PostgreSQL storage | No | Yes |
+| Dashboard operations | No | Yes |
+| Zero-config setup | No | Yes |
 
-## Positioning
-This project is optimized for a fast, understandable, self-hosted memory workflow. If you want maximum simplicity and direct control over your data path, this sidecar is a strong fit.
+## Inspired by gBrain
+This project is inspired by [gBrain](https://github.com/garrytan/gbrain). Thanks to Garry Tan and contributors for helping popularize practical long-term agent memory workflows.
 
-## Inspired By gBrain
-This project is inspired by [gBrain](https://github.com/garrytan/gbrain) and follows the same core idea: give AI assistants persistent memory that survives beyond a single chat window.
-
-Thanks to [garrytan/gbrain](https://github.com/garrytan/gbrain) for helping popularize practical long-term memory workflows for AI agents.
-
-## Why This Is Better For Production Multi-User Use Cases
-Compared to the original single-user-focused memory setup, this sidecar adds production-oriented controls that are useful for shared bots, VPS deployments, and team environments:
-
-- **Multi-tenant isolation**: `chat_id` + `scope_id` filtering reduces cross-user memory mixing risk.
-- **Runtime resilience**: OpenRouter retries with graceful degraded behavior instead of hard crashes.
-- **Abuse protection**: Per-endpoint rate limiting on capture/search APIs.
-- **Data hygiene**: startup cleanup removes orphaned embeddings automatically.
-- **Ops ergonomics**: dashboard health/update visibility and straightforward Docker Compose deployment.
-
-If your primary goal is local personal memory experiments, gBrain remains an excellent reference. If your goal is a continuously running, shared memory sidecar for agent platforms, this project is optimized for that path.
+Use-case split:
+- gBrain: excellent for local, personal memory experiments
+- HermesClaw Zero-Config Sidecar: optimized for shared bots, VPS/server deployment, and continuously running multi-agent workflows
 
 ## Tools
-This project provides a robust CLI (`scripts/memory.py`), a drag-and-drop ingest tool, and maintenance utilities:
-
-- **Ingest**: Drag and drop any file onto `ingest.bat` to automatically move it to `inbox/` for processing.
-- **Maintenance**: Run `maintenance.bat` to trigger embedding rebuilds after large data imports.
-- **Capture**: `python scripts/memory.py capture "The user prefers to work in C:/dev/"`
-- **Search**: `python scripts/memory.py search "where does the user work?"`
-- **Autosave**: `python scripts/memory.py autosave "content..." "filename.txt"`
-
-## Big Data Best Practices
-- **Archive**: All successfully ingested files are automatically moved to the `archive/` folder.
-- **Deduplication**: The backend (`main.py`) automatically performs semantic similarity checks to prevent duplicate entries.
-- **Maintenance**: Regularly run `maintenance.bat` if you have imported large batches of data.
-
-## Database View
-
-<img src="images/db.png" alt="Database (PostgreSQL)" title="PostgreSQL memory data view" width="50%" />
-
-## Accessing the Dashboard
-
-![Dashboard](images/dashboard.png "Dashboard")
-The system includes a secure, interactive web dashboard to view and manage your memory:
-- **URL**: [http://localhost:8010/dashboard](http://localhost:8010/dashboard)
-- **Login**: Username is `admin`; password is the value you set during setup.
-- **Security note**: Change the default password before exposing the service outside localhost.
-
-
-## App Version & Updates
-- Base version is stored in VERSION and can be overridden by APP_VERSION in .env.
-- Runtime version includes git commit metadata when available (for example: 0.1.0+build.123.ab12cd3).
-- Setup now supports update configuration in .env:
-    - AUTO_UPDATE_ENABLED
-    - AUTO_UPDATE_APPLY
-    - AUTO_UPDATE_INTERVAL_MINUTES
-    - AUTO_UPDATE_REMOTE
-    - AUTO_UPDATE_BRANCH
-    - UPDATE_REPO_DIR
-    - UPDATE_RESTART_COMMAND
-- Dashboard offers update controls:
-    - Run App Update
-    - Version JSON at /version
-    - Update status JSON at /update/status
-
-## Automating Tasks (Cron Jobs)
-To ensure your memory stays tidy and you get daily reminders, add these tasks to your system's scheduler (e.g., `crontab -e` on Linux):
-
-```bash
-# Run daily memory highlights at 9:00 AM
-0 9 * * * /usr/bin/python3 /path/to/daily_reminder.py
-
-# Run knowledge gardener (auto-tagging) every Sunday at midnight
-0 0 * * 0 /usr/bin/python3 /path/to/gardener.py
-```
+- Ingest: drag-and-drop into `ingest.bat`
+- Maintenance: `maintenance.bat`
+- Capture: `python scripts/memory.py capture "text"`
+- Search: `python scripts/memory.py search "query"`
+- Autosave: `python scripts/memory.py autosave "content" "filename.txt"`
 
 ## Troubleshooting
-- **401 Unauthorized**: Ensure API_KEY in .env matches the server secret.
-- **Sync service not running**: Check if `memory_sync.py` is active in your process monitor.
-- **Log missing from memory**: Verify that the file was written to the `sync/` directory. If it remains there, the watchdog process needs to be restarted.
-- **Dashboard returns Internal Server Error**: open `/healthz` first. If database is not `ok`, verify `DB_PASSWORD`, DB container health, and startup logs.
-- **Cannot connect via DBeaver**: host is `localhost`, port is `5666`, database is `gbrain`, user is `postgres`.
+- 401 Unauthorized: ensure `API_KEY` matches server config.
+- Sync not running: verify `memory_sync.py` process.
+- Missing logs: confirm files are written to `sync/`.
+- Dashboard error: check `http://localhost:8010/healthz` and DB settings.
 
 ## FAQ
-
 ### Is this production-ready?
-Yes for self-hosted single-team usage. For broader production use, keep secrets in managed secret storage, enforce strong dashboard credentials, and monitor `/healthz`.
+Yes for self-hosted single-team usage.
 
 ### Where is data stored?
-In PostgreSQL (`gbrain` database). Docker volume `pgdata` persists data across restarts.
+PostgreSQL (`gbrain`) persisted with Docker volume `pgdata`.
 
-### Why do I get Unauthorized in browser but API works?
-Browser dashboard uses Basic Auth, API routes use `x-api-key` (or `?key=` where supported). Make sure you are using the right auth method for the route.
+### Why does dashboard auth differ from API auth?
+Dashboard uses Basic Auth. API routes use `x-api-key` (or `?key=` where supported).
 
-*Built with ❤️ for AI Agent autonomy.*
-
-<a href="https://github.com/openclaw/openclaw"><img src="https://cdn.jsdelivr.net/gh/selfhst/icons/png/hermes-agent.png" alt="Hermes Agent" width="30%"></a>
-<a href="https://github.com/openclaw/openclaw"><img src="https://openclaw.ai/logo.png" alt="OpenClaw" width="30%"></a>
-<a href="https://ollama.com/"><img src="https://ollama.com/public/ollama.png" alt="Ollama" width="30%"></a>
-
-<ul>
-<li><a href="https://github.com/nousresearch/hermes-agent">Hermes Agent GitHub</a></li>
-<li><a href="https://openclaw.ai">OpenClaw Website</a></li>
-<li><a href="https://ollama.com">Ollama Website</a></li>
-</ul>
+Built for AI Agent autonomy.
