@@ -170,7 +170,7 @@ Built for AI Agent autonomy.
 
 <a href="https://github.com/openclaw/openclaw"><img src="https://cdn.jsdelivr.net/gh/selfhst/icons/png/hermes-agent.png" alt="Hermes Agent" width="15%"></a>
 <a href="https://github.com/openclaw/openclaw"><img src="https://openclaw.ai/logo.png" alt="OpenClaw" width="30%"></a>
-<a href="https://ollama.com/"><img src="https://ollama.com/public/ollama.png" alt="Ollama" width="30%"></a>
+<a href="https://ollama.com/"><img src="https://ollama.com/public/ollama.png" alt="Ollama" width="15%"></a>
 
 <ul>
 <li><a href="https://github.com/nousresearch/hermes-agent">Hermes Agent GitHub</a></li>
