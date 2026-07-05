@@ -5,15 +5,44 @@
 ![Docker](https://img.shields.io/badge/docker-required-2496ED.svg)
 
 # HermesClaw Zero-Config Sidecar
-Persistent Memory for AI Agents (Hermes, OpenClaw)
-Self-hosted | Zero-Config | PostgreSQL + pgvector | Multi-Tenant
+## 🧠 Give Hermes & OpenClaw a Persistent Brain
+Zero-configuration long-term memory powered by PostgreSQL + pgvector.
+
+- ✅ Works in minutes
+- ✅ Windows + Linux
+- ✅ Fully local / self-hosted
+- ✅ Docker-based setup
+- ✅ Open source
 
 The HermesClawZero-ConfigSidecar is a practical sidecar that gives AI agents durable, queryable long-term memory.
 
-## Why This Exists
-- Session context disappears and important details are lost over time.
-- Very large prompts are expensive and still lossy in longer workflows.
-- Agents need durable memory that can be searched, filtered, and maintained.
+## Why You'll Love It
+- 🧠 AI remembers conversations across sessions
+- ⚡ Quick setup with minimal config
+- 🐳 Docker-first deployment
+- 💾 PostgreSQL + pgvector persistence
+- 🔍 Semantic search for memory recall
+- 🔒 Self-hosted and private
+- 🌍 Windows + Linux support
+- 🤖 Built for Hermes + OpenClaw workflows
+
+## What Problem Does This Solve?
+Without persistent memory:
+- ❌ AI forgets previous sessions
+- ❌ Important details are lost over time
+- ❌ Context windows become expensive
+- ❌ Long projects lose continuity
+
+HermesClaw solves this by giving each AI workflow a persistent PostgreSQL-backed memory layer.
+
+## Workflow At A Glance
+```mermaid
+flowchart TD
+  U[User] --> H[Hermes / OpenClaw]
+  H --> S[HermesClaw Sidecar API]
+  S --> P[(PostgreSQL + pgvector)]
+  P --> F[Future conversations remember context]
+```
 
 ## Quick Start
 Run the setup script for your OS. It verifies dependencies, creates `.env`, and can optionally set up Ollama.
@@ -130,12 +159,34 @@ Sidecar flow:
 | Dashboard operations | No | Yes |
 | Zero-config setup | No | Yes |
 
-## Inspired by gBrain
-This project is inspired by [gBrain](https://github.com/garrytan/gbrain). Thanks to Garry Tan and contributors for helping popularize practical long-term agent memory workflows.
+## Why Use This Instead Of Generic Memory Stacks?
+- ✅ Tailored for Hermes + OpenClaw usage
+- ✅ Zero-config, Docker-first local deployment
+- ✅ PostgreSQL-backed persistence with pgvector
+- ✅ Multi-tenant memory isolation already integrated
 
-Use-case split:
-- gBrain: excellent for local, personal memory experiments
-- HermesClaw Zero-Config Sidecar: optimized for shared bots, VPS/server deployment, and continuously running multi-agent workflows
+## Who Is This For?
+- 👩‍💻 AI developers building long-running assistants
+- 🤖 Hermes users
+- 🧩 OpenClaw users
+- 🏠 Self-hosters and local-LLM enthusiasts
+- 🛠️ MCP and agent-workflow developers
+
+## Roadmap
+- ✅ PostgreSQL storage
+- ✅ pgvector semantic memory
+- ✅ Docker deployment
+- ✅ Dashboard
+- ✅ Multi-tenant isolation
+- ✅ Semantic search
+- ⬜ Hybrid retrieval
+- ⬜ Memory summarization
+- ⬜ Knowledge graph support
+- ⬜ Dashboard/UI improvements
+- ⬜ MCP auto-discovery improvements
+
+## Project Positioning
+Inspired by recent advances in long-term AI memory, this project focuses on zero-configuration deployment, self-hosting, and practical day-to-day agent usage.
 
 ## Tools
 - Ingest: drag-and-drop into `ingest.bat`
