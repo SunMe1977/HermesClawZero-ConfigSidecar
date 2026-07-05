@@ -12,15 +12,13 @@ The **HermesClawZero-ConfigSidecar** is a modular, automation-first sidecar serv
 
 ## Quick Start (One-Click Setup)
 
-No manual configuration needed. Just run the install script for your OS. It will verify Python, Docker, install dependencies, and generate your `.env` file automatically.
+No manual configuration needed. Just run the setup script for your OS. It will verify Python, Docker, install dependencies, and generate your `.env` file automatically.
 
 ### Windows
-1. Double-click **`install_requirements.bat`**.
-2. Run your application using **`start.bat`**.
+1. Double-click **`setup.bat`**.
 
 ### Linux/macOS
-1. Run **`bash install_requirements.sh`**.
-2. Run your application using **`bash start.sh`**.
+1. Run **`bash setup.sh`**.
 
 *(After the first run, update the `OPENCLAW_KEY` in the generated `.env` file with your secret.)*
 
