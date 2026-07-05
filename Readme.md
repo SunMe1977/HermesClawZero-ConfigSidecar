@@ -12,13 +12,11 @@ The **HermesClawZero-ConfigSidecar** is a modular, automation-first sidecar serv
 
 ## Quick Start (One-Click Setup)
 
-No manual configuration needed. Just run the setup script for your OS. It will verify dependencies, configure your `.env`, and optionally setup **Ollama** in Docker with required models (`nomic-embed-text`, `llama3.1`).
+No manual configuration needed. Just run the setup script for your OS. It will verify dependencies, configure your `.env`, and optionally setup **Ollama** in Docker.
 
-### Windows
-1. Double-click **`setup.bat`**.
-
-### Linux/macOS
-1. Run **`bash setup.sh`**.
+### Supported API Providers
+- **Local**: Ollama (Docker)
+- **Cloud**: OpenAI, Google Gemini, Anthropic, OpenRouter
 
 *(After the first run, update the `OPENCLAW_KEY` in the generated `.env` file with your secret.)*
 
