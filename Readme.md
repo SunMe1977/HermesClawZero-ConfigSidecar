@@ -26,6 +26,8 @@ Install this project from GitHub:
 https://github.com/SunMe1977/HermesClawZero-ConfigSidecar
 ```
 
+![Setup CLI](images/setup-cli.png "Setup CLI")
+
 ### Manual Setup
 - Windows: `setup.bat`
 - Linux/macOS: `bash setup.sh`
@@ -117,6 +119,8 @@ Sidecar flow:
 - Sidecar API -> Dashboard + Optimizer
 - Watchdog -> syncs local files into memory
 
+![Architecture](images/architecture-diagram.webp "Architecture diagram")
+
 ## Feature Comparison
 | Feature | Default Agent Setup | Zero-Config Sidecar |
 |---|---|---|
@@ -139,6 +143,12 @@ Use-case split:
 - Capture: `python scripts/memory.py capture "text"`
 - Search: `python scripts/memory.py search "query"`
 - Autosave: `python scripts/memory.py autosave "content" "filename.txt"`
+
+## Database View
+![Database](images/db.png "Database (PostgreSQL)")
+
+## Dashboard
+![Dashboard](images/dashboard.png "Dashboard")
 
 ## Troubleshooting
 - 401 Unauthorized: ensure `API_KEY` matches server config.
