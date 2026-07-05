@@ -126,6 +126,12 @@ def get_current_username(
         headers={"WWW-Authenticate": "Basic"},
     )
 
+
+def require_api_key(request: Request):
+    key = request.headers.get("x-api-key") or request.query_params.get("key")
+    if not key or not API_KEY or not secrets.compare_digest(key, API_KEY):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized")
+
 @app.middleware("http")
 async def url_api_key(request, call_next):
     path = request.url.path
@@ -140,7 +146,6 @@ async def url_api_key(request, call_next):
         "/dashboard",
         "/delete",
         "/export",
-        "/transcribe",
         "/tag_auto/",
         "/page_html",
         "/optimizer/",
@@ -988,7 +993,7 @@ async def capture(text: str | None = None, body: CaptureRequest | None = Body(de
         "confidence": round(meta["confidence"], 3),
     }
 
-@app.post("/transcribe", dependencies=[Depends(get_current_username)])
+@app.post("/transcribe", dependencies=[Depends(require_api_key)])
 async def transcribe(file: UploadFile = File(...)):
     suffix = Path(file.filename or "audio").suffix
     temp_path = ""
