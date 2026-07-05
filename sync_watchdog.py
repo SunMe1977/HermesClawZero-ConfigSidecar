@@ -75,6 +75,18 @@ SESSION = requests.Session()
 HAS_CHAT_ID_COLUMN: bool | None = None
 
 
+def _resolve_scope_prefix() -> str:
+    configured = (os.getenv("MEM_SCOPE_PREFIX") or "").strip().lower()
+    if configured:
+        return configured
+    if os.getenv("OPENCLAW_URL"):
+        return "openclaw"
+    return "hermes"
+
+
+SCOPE_PREFIX = _resolve_scope_prefix()
+
+
 def _api_reachable() -> bool:
     health_url = BASE_URL.rstrip("/") + "/healthz"
     try:
@@ -152,6 +164,15 @@ def _messages_has_chat_id_column(cursor: sqlite3.Cursor) -> bool:
         HAS_CHAT_ID_COLUMN = False
     return HAS_CHAT_ID_COLUMN
 
+
+def _build_scope_id(chat_id) -> str:
+    if chat_id is None:
+        return SCOPE_PREFIX
+    chat_str = str(chat_id).strip()
+    if not chat_str:
+        return SCOPE_PREFIX
+    return f"{SCOPE_PREFIX}:{chat_str}"
+
 def sync_messages() -> tuple[bool, int]:
     global LAST_IDLE_LOG_TS
 
@@ -201,10 +222,10 @@ def sync_messages() -> tuple[bool, int]:
     for row in rows:
         if len(row) >= 4:
             msg_id, content, role, chat_id = row
-            scope_id = f"telegram:{chat_id}" if chat_id is not None else None
+            scope_id = _build_scope_id(chat_id)
         else:
             msg_id, content, role = row
-            scope_id = None
+            scope_id = SCOPE_PREFIX
 
         if not content or role not in ['user', 'assistant']:
             # Advance cursor for non-syncable rows so the watchdog cannot stall forever.
