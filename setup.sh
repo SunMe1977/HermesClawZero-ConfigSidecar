@@ -31,8 +31,19 @@ if [ -n "$KEY_VAR" ]; then
     read -p "Enter $KEY_VAR: " KEY
 fi
 
-# Load current .env for defaults
-if [ -f .env ]; then export $(grep -v '^#' .env | xargs); fi
+# Load current .env for defaults (robust against spaces/special chars in values)
+if [ -f .env ]; then
+    while IFS= read -r line || [ -n "$line" ]; do
+        case "$line" in
+            ''|'#'*) continue ;;
+        esac
+        key="${line%%=*}"
+        value="${line#*=}"
+        if [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+            export "$key=$value"
+        fi
+    done < .env
+fi
 
 read -p "Enter API Key [${API_KEY:-YOUR_KEY_HERE}]: " INPUT_API_KEY
 read -p "Enter Dashboard Password [${DASHBOARD_PASSWORD:-admin}]: " INPUT_DASHBOARD_PASS
