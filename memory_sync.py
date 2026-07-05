@@ -5,7 +5,8 @@ import os
 import psutil
 
 SYNC_FOLDER = pathlib.Path("sync")
-API_URL = "http://localhost:8000/capture"
+API_URL = os.getenv("MEM_PUBLIC_URL", "https://openclawmemwin.postarmory.com") + "/capture"
+API_KEY = os.getenv("API_KEY", "YOUR_API_KEY_HERE")
 PID_FILE = pathlib.Path("memory_sync.pid")
 
 imported_files = set()
@@ -29,7 +30,7 @@ def import_file(path: pathlib.Path):
         print(f"[SYNC] Fehler beim Lesen von {path.name}: {e}")
         return
 
-    resp = requests.post(API_URL, params={"text": text})
+    resp = requests.post(API_URL, params={"key": API_KEY}, json={"text": text})
     data = resp.json()
 
     print(f"[SYNC] {path.name}: {data}")
@@ -51,4 +52,5 @@ def run_sync():
 
         time.sleep(2)
 
-# Wird von main.py gestartet
+if __name__ == "__main__":
+    run_sync()
