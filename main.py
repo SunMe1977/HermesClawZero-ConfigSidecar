@@ -3,6 +3,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 import psycopg
 import ollama
+import requests
 import os
 import threading
 import html
@@ -212,7 +213,61 @@ def embedding_to_pgvector_literal(embedding: list[float]) -> str:
 
 OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://host.docker.internal:11435")
 client = ollama.Client(host=OLLAMA_HOST)
+AI_PROVIDER = (os.getenv("AI_PROVIDER", "ollama") or "ollama").strip().lower()
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
+OPENAI_EMBED_MODEL = os.getenv("OPENAI_EMBED_MODEL", "text-embedding-3-small")
+OPENROUTER_EMBED_MODEL = os.getenv("OPENROUTER_EMBED_MODEL", "text-embedding-3-small")
 DECAY_INTERVAL_SECONDS = int(os.getenv("MEMORY_DECAY_INTERVAL_SECONDS", "21600"))
+
+
+def generate_embedding(text: str) -> list[float]:
+    provider = AI_PROVIDER
+    if provider == "ollama":
+        resp = client.embeddings(model="nomic-embed-text", prompt=text)
+        return resp["embedding"]
+
+    if provider == "openai":
+        if not OPENAI_API_KEY:
+            raise HTTPException(status_code=500, detail="OPENAI_API_KEY is required when AI_PROVIDER=openai")
+        response = requests.post(
+            "https://api.openai.com/v1/embeddings",
+            headers={
+                "Authorization": f"Bearer {OPENAI_API_KEY}",
+                "Content-Type": "application/json",
+            },
+            json={"model": OPENAI_EMBED_MODEL, "input": text},
+            timeout=45,
+        )
+        if response.status_code >= 400:
+            raise HTTPException(status_code=500, detail=f"OpenAI embedding failed: {response.text}")
+        data = response.json()
+        return data["data"][0]["embedding"]
+
+    if provider == "openrouter":
+        if not OPENROUTER_API_KEY:
+            raise HTTPException(status_code=500, detail="OPENROUTER_API_KEY is required when AI_PROVIDER=openrouter")
+        response = requests.post(
+            "https://openrouter.ai/api/v1/embeddings",
+            headers={
+                "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                "Content-Type": "application/json",
+            },
+            json={"model": OPENROUTER_EMBED_MODEL, "input": text},
+            timeout=45,
+        )
+        if response.status_code >= 400:
+            raise HTTPException(status_code=500, detail=f"OpenRouter embedding failed: {response.text}")
+        data = response.json()
+        return data["data"][0]["embedding"]
+
+    raise HTTPException(
+        status_code=500,
+        detail=(
+            "Unsupported AI_PROVIDER for embeddings. "
+            "Use one of: ollama, openai, openrouter"
+        ),
+    )
 
 
 def clamp(value: float, low: float = 0.0, high: float = 1.0) -> float:
@@ -926,8 +981,7 @@ def decay_loop() -> None:
 #  CAPTURE & SEARCH
 # ---------------------------------------------------------
 def find_similar_page(text: str, threshold: float = 0.05):
-    resp = client.embeddings(model="nomic-embed-text", prompt=text)
-    emb = resp["embedding"]
+    emb = generate_embedding(text)
     emb_str = embedding_to_pgvector_literal(emb)
     with connect_db() as conn:
         with conn.cursor() as cur:
@@ -1001,8 +1055,7 @@ async def capture(text: str | None = None, body: CaptureRequest | None = Body(de
             page_id = cur.fetchone()[0]
             conn.commit()
 
-    resp = client.embeddings(model="nomic-embed-text", prompt=capture_text)
-    emb = resp["embedding"]
+    emb = generate_embedding(capture_text)
     emb_str = embedding_to_pgvector_literal(emb)
     with connect_db() as conn:
         with conn.cursor() as cur:
@@ -1074,8 +1127,7 @@ async def search(query: str = "", limit: int = 5, rerank_results: bool = False):
             for r in rows
         ]
     
-    resp = client.embeddings(model="nomic-embed-text", prompt=query)
-    qemb = resp["embedding"]
+    qemb = generate_embedding(query)
     qemb_str = embedding_to_pgvector_literal(qemb)
 
     candidates: dict[int, dict] = {}
