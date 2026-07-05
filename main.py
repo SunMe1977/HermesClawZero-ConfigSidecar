@@ -128,18 +128,26 @@ def get_current_username(
 
 @app.middleware("http")
 async def url_api_key(request, call_next):
-    exempt_paths = [
-        "/", "/openapi.json", "/docs", "/docs/swagger-ui.css", "/docs/swagger-ui-bundle.js",
-        "/dashboard", "/delete", "/export", "/transcribe"
-    ]
-    if (
-        request.url.path in exempt_paths
-        or request.url.path.startswith("/tag_auto/")
-        or request.url.path.startswith("/page_html")
-        or request.url.path.startswith("/optimizer/")
-        or request.url.path.startswith("/update/")
-        or request.url.path == "/version"
-    ):
+    path = request.url.path
+    exempt_exact_paths = {
+        "/",
+        "/openapi.json",
+        "/docs",
+        "/version",
+    }
+    exempt_prefixes = (
+        "/docs/",
+        "/dashboard",
+        "/delete",
+        "/export",
+        "/transcribe",
+        "/tag_auto/",
+        "/page_html",
+        "/optimizer/",
+        "/update/",
+    )
+
+    if path in exempt_exact_paths or any(path.startswith(prefix) for prefix in exempt_prefixes):
         return await call_next(request)
 
     key = request.headers.get("x-api-key") or request.query_params.get("key")
@@ -1224,32 +1232,49 @@ async def dashboard(
     safe_health_stale_days = max(1, min(health_stale_days, 3650))
     safe_health_confidence = clamp(health_confidence_threshold, 0.0, 1.0)
     safe_health_limit = max(1, min(health_limit, 50))
-    review = get_optimizer_review(
-        limit=safe_health_limit,
-        stale_days=safe_health_stale_days,
-        confidence_threshold=safe_health_confidence,
-    )
-    dry_run = get_optimizer_dry_run(
-        limit=safe_health_limit,
-        stale_days=safe_health_stale_days,
-        confidence_threshold=safe_health_confidence,
-    )
-    latest_manual_batch_id = get_latest_manual_archive_batch_id()
-    version_info = get_version_info()
-    update_status = get_update_status(fetch_remote=False)
-    
-    with connect_db() as conn:
-        with conn.cursor() as cur:
-            if query:
-                cur.execute("SELECT id, content FROM pages WHERE content ILIKE %s ORDER BY id DESC LIMIT %s OFFSET %s", (f"%{query}%", per_page, offset))
-                rows = cur.fetchall()
-                cur.execute("SELECT COUNT(*) FROM pages WHERE content ILIKE %s", (f"%{query}%",))
-                total_items = cur.fetchone()[0]
-            else:
-                cur.execute("SELECT id, content FROM pages ORDER BY id DESC LIMIT %s OFFSET %s", (per_page, offset))
-                rows = cur.fetchall()
-                cur.execute("SELECT COUNT(*) FROM pages")
-                total_items = cur.fetchone()[0]
+    try:
+        # Keep dashboard resilient even if a deployment has stale schema.
+        ensure_phase1_schema()
+
+        review = get_optimizer_review(
+            limit=safe_health_limit,
+            stale_days=safe_health_stale_days,
+            confidence_threshold=safe_health_confidence,
+        )
+        dry_run = get_optimizer_dry_run(
+            limit=safe_health_limit,
+            stale_days=safe_health_stale_days,
+            confidence_threshold=safe_health_confidence,
+        )
+        latest_manual_batch_id = get_latest_manual_archive_batch_id()
+        version_info = get_version_info()
+        update_status = get_update_status(fetch_remote=False)
+
+        with connect_db() as conn:
+            with conn.cursor() as cur:
+                if query:
+                    cur.execute("SELECT id, content FROM pages WHERE content ILIKE %s ORDER BY id DESC LIMIT %s OFFSET %s", (f"%{query}%", per_page, offset))
+                    rows = cur.fetchall()
+                    cur.execute("SELECT COUNT(*) FROM pages WHERE content ILIKE %s", (f"%{query}%",))
+                    total_items = cur.fetchone()[0]
+                else:
+                    cur.execute("SELECT id, content FROM pages ORDER BY id DESC LIMIT %s OFFSET %s", (per_page, offset))
+                    rows = cur.fetchall()
+                    cur.execute("SELECT COUNT(*) FROM pages")
+                    total_items = cur.fetchone()[0]
+    except Exception as ex:
+        return HTMLResponse(
+            f"""
+            <html><head><title>Dashboard Error</title></head>
+            <body style='font-family: sans-serif; background:#121212; color:#fff; padding:24px;'>
+                <h1>Dashboard Error</h1>
+                <p>The dashboard failed to load due to a backend/runtime issue.</p>
+                <pre style='white-space: pre-wrap; background:#1e1e1e; border:1px solid #333; padding:12px; border-radius:6px;'>{html.escape(str(ex))}</pre>
+                <p>Common causes on VPS: database connectivity, missing DB schema, or environment mismatches.</p>
+            </body></html>
+            """,
+            status_code=500,
+        )
 
     total_pages = math.ceil(total_items / per_page)
     
