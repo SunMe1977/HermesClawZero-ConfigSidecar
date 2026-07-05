@@ -7,6 +7,22 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-CimInstance Win32_Pr
 echo [START] System Services...
 start "" python sync_watchdog.py
 docker compose down
-docker compose up --build -d
+
+set "PROVIDER="
+for /f "tokens=1,* delims==" %%A in (.env) do (
+	if /I "%%A"=="AI_PROVIDER" set "PROVIDER=%%B"
+)
+
+if /I "%PROVIDER%"=="ollama" (
+	echo [START] AI_PROVIDER=ollama ^> starting with Ollama profile
+	docker compose --profile ollama up --build -d
+) else (
+	if "%PROVIDER%"=="" (
+		echo [START] AI_PROVIDER is unset ^> starting without Ollama container
+	) else (
+		echo [START] AI_PROVIDER=%PROVIDER% ^> starting without Ollama container
+	)
+	docker compose up --build -d
+)
 
 echo [OK] System läuft.

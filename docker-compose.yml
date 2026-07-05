@@ -28,8 +28,6 @@ services:
     depends_on:
       db:
         condition: service_healthy
-      ollama:
-        condition: service_healthy
     env_file:
       - .env
     ports:
@@ -52,6 +50,7 @@ services:
       start_period: 35s
 
   ollama:
+    profiles: ["ollama"]
     build:
       context: .
       dockerfile: Dockerfile.ollama
