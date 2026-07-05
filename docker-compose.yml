@@ -4,22 +4,32 @@ services:
       context: .
       dockerfile: Dockerfile.postgres
     container_name: gbrain-postgres
+    restart: unless-stopped
     ports:
       - "5666:5432"
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
       POSTGRES_DB: gbrain
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d gbrain"]
+      interval: 10s
+      timeout: 5s
+      retries: 8
+      start_period: 10s
 
   api:
     build:
       context: .
       dockerfile: Dockerfile.api
+    restart: unless-stopped
     depends_on:
-      - db
-      - ollama
+      db:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
     env_file:
       - .env
     ports:
@@ -29,21 +39,34 @@ services:
       DB_PORT: 5432
       DB_NAME: gbrain
       DB_USER: postgres
-      DB_PASSWORD: ${DB_PASSWORD}
+      DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
       API_URL: ${API_URL}
-      API_KEY: ${API_KEY}
+      API_KEY: ${API_KEY:?API_KEY is required}
       SYNC_DIR: ${SYNC_DIR}
       OLLAMA_HOST: ${OLLAMA_HOST}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/version', timeout=5)"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 35s
 
   ollama:
     build:
       context: .
       dockerfile: Dockerfile.ollama
     container_name: gbrain-ollama
+    restart: unless-stopped
     ports:
       - "11435:11434"
     volumes:
       - ollama_data:/root/.ollama
+    healthcheck:
+      test: ["CMD", "sh", "-c", "ollama list >/dev/null 2>&1"]
+      interval: 20s
+      timeout: 10s
+      retries: 10
+      start_period: 20s
 
 volumes:
   pgdata:

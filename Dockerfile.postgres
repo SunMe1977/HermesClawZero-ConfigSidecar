@@ -1,11 +1,6 @@
 # Basis: fertiges pgvector-Image
 FROM ankane/pgvector:latest
 
-# Environment-Variablen für Postgres
-ENV POSTGRES_USER=postgres
-ENV POSTGRES_PASSWORD=JH!§$2121
-ENV POSTGRES_DB=gbrain
-
 # Port
 EXPOSE 5432
 

@@ -139,6 +139,7 @@ async def url_api_key(request, call_next):
         "/",
         "/openapi.json",
         "/docs",
+        "/healthz",
         "/version",
     }
     exempt_prefixes = (
@@ -164,6 +165,29 @@ async def url_api_key(request, call_next):
 @app.get("/")
 async def root_redirect():
     return RedirectResponse(url="/dashboard", status_code=307)
+
+
+@app.get("/healthz")
+async def healthz():
+    db_ok = True
+    db_error = ""
+    try:
+        with connect_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT 1")
+                cur.fetchone()
+    except Exception as ex:
+        db_ok = False
+        db_error = str(ex)
+
+    status_text = "ok" if db_ok else "degraded"
+    payload = {
+        "status": status_text,
+        "database": "ok" if db_ok else "error",
+    }
+    if db_error:
+        payload["database_error"] = db_error
+    return JSONResponse(payload, status_code=200 if db_ok else 503)
 
 
 # ---------------------------------------------------------
@@ -1486,9 +1510,17 @@ def start_auto_update_worker():
 
 @app.on_event("startup")
 def startup_event():
-    if not API_KEY: raise RuntimeError("API_KEY is required.")
-    ensure_phase1_schema()
-    run_decay_and_archive_once()
+    if not API_KEY:
+        raise RuntimeError("API_KEY is required.")
+    if DASHBOARD_PASSWORD == "admin":
+        print("[SECURITY] DASHBOARD_PASSWORD is still set to default 'admin'.")
+
+    try:
+        ensure_phase1_schema()
+        run_decay_and_archive_once()
+    except Exception as ex:
+        raise RuntimeError(f"Startup failed during database initialization: {ex}") from ex
+
     start_decay_optimizer()
     start_auto_update_worker()
     start_sync()

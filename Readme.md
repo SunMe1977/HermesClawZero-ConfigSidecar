@@ -1,5 +1,9 @@
 ![Logo](images/logo.webp "HermesClaw Zero‑Config Sidecar")
 
+![License](https://img.shields.io/badge/license-MIT-green.svg)
+![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)
+![Docker](https://img.shields.io/badge/docker-required-2496ED.svg)
+
 ```text
     __  __                                  ________                
    / / / /__  _________ ___  ___  _____    / ____/ /___ _      ______
@@ -30,6 +34,13 @@ You can install this project automatically using an AI agent (like OpenClaw or H
 - **Windows**: Double-click `setup.bat`.
 - **Linux/macOS**: Run `bash setup.sh`.
 
+### Start The Stack
+- **Windows**: Run `start.bat`
+- **Linux/macOS**: Run `./start.sh`
+- **API docs**: `http://localhost:8000/docs`
+- **Health check**: `http://localhost:8000/healthz`
+- **Dashboard**: `http://localhost:8000/dashboard`
+
 ---
 ## Requirements
 - Python 3.11+
@@ -52,6 +63,7 @@ flowchart LR
 
 <picture>
     <source srcset="images/architecture-diagram.webp" type="image/webp">
+    <img src="images/architecture-diagram.png" alt="Architecture diagram" width="100%">
 </picture>
 
 If your Markdown viewer does not render Mermaid, use this fallback:
@@ -152,6 +164,19 @@ To ensure your memory stays tidy and you get daily reminders, add these tasks to
 - **401 Unauthorized**: Ensure API_KEY in .env matches the server secret.
 - **Sync service not running**: Check if `memory_sync.py` is active in your process monitor.
 - **Log missing from memory**: Verify that the file was written to the `sync/` directory. If it remains there, the watchdog process needs to be restarted.
+- **Dashboard returns Internal Server Error**: open `/healthz` first. If database is not `ok`, verify `DB_PASSWORD`, DB container health, and startup logs.
+- **Cannot connect via DBeaver**: host is `localhost`, port is `5666`, database is `gbrain`, user is `postgres`.
+
+## FAQ
+
+### Is this production-ready?
+Yes for self-hosted single-team usage. For broader production use, keep secrets in managed secret storage, enforce strong dashboard credentials, and monitor `/healthz`.
+
+### Where is data stored?
+In PostgreSQL (`gbrain` database). Docker volume `pgdata` persists data across restarts.
+
+### Why do I get Unauthorized in browser but API works?
+Browser dashboard uses Basic Auth, API routes use `x-api-key` (or `?key=` where supported). Make sure you are using the right auth method for the route.
 
 *Built with ❤️ for AI Agent autonomy.*
 
