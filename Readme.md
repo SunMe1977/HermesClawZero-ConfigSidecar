@@ -54,7 +54,7 @@ This project provides a robust CLI (`scripts/memory.py`), a drag-and-drop ingest
 
 ## Accessing the Dashboard
 
-![Dashboard](images/dashboard.webp "Dashboard")
+![Dashboard](images/dashboard.png "Dashboard")
 The system includes a secure, interactive web dashboard to view and manage your memory:
 - **URL**: [http://localhost:8000/dashboard](http://localhost:8000/dashboard)
 - **Login**: `admin` / (The password set during setup)
