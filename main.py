@@ -55,12 +55,14 @@ whisper_model = whisper.load_model("base")
 class CaptureRequest(BaseModel):
     text: str
     scope_id: str | None = None
+    chat_id: str | None = None
 
 
 class BatchCaptureItem(BaseModel):
     msg_id: int | None = None
     text: str
     scope_id: str | None = None
+    chat_id: str | None = None
 
 
 class BatchCaptureRequest(BaseModel):
@@ -643,6 +645,26 @@ def normalize_scope_id(value: str | None) -> str | None:
     return normalized[:200]
 
 
+def normalize_chat_id(value: str | None) -> str:
+    if value is None:
+        return "global"
+    normalized = value.strip()
+    if not normalized:
+        return "global"
+    return normalized[:200]
+
+
+def derive_chat_id(explicit_chat_id: str | None, scope_id: str | None) -> str:
+    normalized = normalize_chat_id(explicit_chat_id)
+    if normalized != "global":
+        return normalized
+
+    scope_value = normalize_scope_id(scope_id)
+    if scope_value and ":" in scope_value:
+        return normalize_chat_id(scope_value.split(":", 1)[1])
+    return "global"
+
+
 def build_scope_filter(selected_scope: str | None, column_name: str = "scope_id") -> tuple[str, list]:
     raw = (selected_scope or "").strip()
     if not raw or raw == DASHBOARD_SCOPE_ALL:
@@ -771,6 +793,7 @@ def ensure_phase1_schema() -> None:
             cur.execute("ALTER TABLE pages ADD COLUMN IF NOT EXISTS last_retrieved TIMESTAMP")
             cur.execute("ALTER TABLE pages ADD COLUMN IF NOT EXISTS is_archived BOOLEAN NOT NULL DEFAULT FALSE")
             cur.execute("ALTER TABLE pages ADD COLUMN IF NOT EXISTS scope_id TEXT")
+            cur.execute("ALTER TABLE pages ADD COLUMN IF NOT EXISTS chat_id TEXT NOT NULL DEFAULT 'global'")
 
             cur.execute(
                 """
@@ -803,6 +826,7 @@ def ensure_phase1_schema() -> None:
             cur.execute("ALTER TABLE pages_archive ADD COLUMN IF NOT EXISTS scope_id TEXT")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_pages_archive_batch ON pages_archive(archive_batch_id)")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_pages_scope_id ON pages(scope_id)")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_pages_chat_id ON pages(chat_id)")
             conn.commit()
 
     ensure_embeddings_schema(infer_embedding_dimension())
@@ -1346,7 +1370,12 @@ def decay_loop() -> None:
 # ---------------------------------------------------------
 #  CAPTURE & SEARCH
 # ---------------------------------------------------------
-def find_similar_page(text: str, threshold: float = 0.05, scope_id: str | None = None):
+def find_similar_page(
+    text: str,
+    threshold: float = 0.05,
+    scope_id: str | None = None,
+    chat_id: str = "global",
+):
     emb = generate_embedding(text)
     emb_str = embedding_to_pgvector_literal(emb)
     with connect_db() as conn:
@@ -1357,24 +1386,31 @@ def find_similar_page(text: str, threshold: float = 0.05, scope_id: str | None =
                 FROM embeddings e
                 JOIN pages p ON p.id = e.page_id
                 WHERE p.is_archived = FALSE
+                                    AND p.chat_id = %s
                   AND (%s IS NULL OR p.scope_id = %s)
                 ORDER BY dist ASC
                 LIMIT 1
                 """,
-                (emb_str, scope_id, scope_id),
+                                (emb_str, normalize_chat_id(chat_id), scope_id, scope_id),
             )
             row = cur.fetchone()
     if row and row[2] <= threshold: return {"id": row[0], "content": row[1], "distance": row[2]}
     return None
 
 @app.post("/capture")
-async def capture(text: str | None = None, scope_id: str | None = None, body: CaptureRequest | None = Body(default=None)):
+async def capture(
+    text: str | None = None,
+    scope_id: str | None = None,
+    chat_id: str | None = None,
+    body: CaptureRequest | None = Body(default=None),
+):
     capture_text = text if text is not None else (body.text if body else None)
     capture_scope_id = normalize_scope_id(scope_id if scope_id is not None else (body.scope_id if body else None))
+    capture_chat_id = derive_chat_id(chat_id if chat_id is not None else (body.chat_id if body else None), capture_scope_id)
     if not capture_text or not capture_text.strip(): raise HTTPException(status_code=400, detail="text is required")
     capture_text = capture_text.strip()
     meta = score_memory(capture_text)
-    similar = find_similar_page(capture_text, scope_id=capture_scope_id)
+    similar = find_similar_page(capture_text, scope_id=capture_scope_id, chat_id=capture_chat_id)
     if similar:
         with connect_db() as conn:
             with conn.cursor() as cur:
@@ -1405,9 +1441,9 @@ async def capture(text: str | None = None, scope_id: str | None = None, body: Ca
                 """
                 INSERT INTO pages (
                     content, memory_type, importance, confidence, frequency,
-                    sentiment, source, ttl_days, scope_id, updated_at, last_used
+                        sentiment, source, ttl_days, scope_id, chat_id, updated_at, last_used
                 )
-                VALUES (%s, %s, %s, %s, 1, %s, %s, %s, %s, NOW(), NOW())
+                    VALUES (%s, %s, %s, %s, 1, %s, %s, %s, %s, %s, NOW(), NOW())
                 RETURNING id
                 """,
                 (
@@ -1419,6 +1455,7 @@ async def capture(text: str | None = None, scope_id: str | None = None, body: Ca
                     meta["source"],
                     meta["ttl_days"],
                     capture_scope_id,
+                        capture_chat_id,
                 ),
             )
             page_id = cur.fetchone()[0]
@@ -1459,13 +1496,14 @@ async def capture_batch(body: BatchCaptureRequest):
     if not body.items:
         raise HTTPException(status_code=400, detail="items are required")
 
-    prepared: list[tuple[int | None, str | None, str, dict]] = []
+    prepared: list[tuple[int | None, str | None, str, str, dict]] = []
     for item in body.items:
         text = (item.text or "").strip()
         if not text:
             continue
         meta = score_memory(text)
-        prepared.append((item.msg_id, normalize_scope_id(item.scope_id), text, meta))
+        normalized_scope_id = normalize_scope_id(item.scope_id)
+        prepared.append((item.msg_id, normalized_scope_id, derive_chat_id(item.chat_id, normalized_scope_id), text, meta))
 
     if not prepared:
         raise HTTPException(status_code=400, detail="no valid non-empty items")
@@ -1474,8 +1512,8 @@ async def capture_batch(body: BatchCaptureRequest):
         dedupe_candidates = prepared
     else:
         dedupe_candidates = []
-        for msg_id, scope_id, text, meta in prepared:
-            similar = find_similar_page(text, scope_id=scope_id)
+        for msg_id, scope_id, chat_id, text, meta in prepared:
+            similar = find_similar_page(text, scope_id=scope_id, chat_id=chat_id)
             if similar:
                 with connect_db() as conn:
                     with conn.cursor() as cur:
@@ -1492,12 +1530,12 @@ async def capture_batch(body: BatchCaptureRequest):
                         )
                         conn.commit()
                 continue
-            dedupe_candidates.append((msg_id, scope_id, text, meta))
+            dedupe_candidates.append((msg_id, scope_id, chat_id, text, meta))
 
     if not dedupe_candidates:
         return {"status": "ok", "processed": 0, "msg_ids": []}
 
-    texts = [x[2] for x in dedupe_candidates]
+    texts = [x[3] for x in dedupe_candidates]
     embeddings = generate_embeddings(texts)
     if len(embeddings) != len(texts):
         raise HTTPException(status_code=500, detail="embedding batch size mismatch")
@@ -1506,14 +1544,14 @@ async def capture_batch(body: BatchCaptureRequest):
     with connect_db() as conn:
         with conn.cursor() as cur:
             page_ids: list[int] = []
-            for msg_id, scope_id, text, meta in dedupe_candidates:
+            for msg_id, scope_id, chat_id, text, meta in dedupe_candidates:
                 cur.execute(
                     """
                     INSERT INTO pages (
                         content, memory_type, importance, confidence, frequency,
-                        sentiment, source, ttl_days, scope_id, updated_at, last_used
+                        sentiment, source, ttl_days, scope_id, chat_id, updated_at, last_used
                     )
-                    VALUES (%s, %s, %s, %s, 1, %s, %s, %s, %s, NOW(), NOW())
+                    VALUES (%s, %s, %s, %s, 1, %s, %s, %s, %s, %s, NOW(), NOW())
                     RETURNING id
                     """,
                     (
@@ -1525,6 +1563,7 @@ async def capture_batch(body: BatchCaptureRequest):
                         meta["source"],
                         meta["ttl_days"],
                         scope_id,
+                        chat_id,
                     ),
                 )
                 page_ids.append(cur.fetchone()[0])
@@ -1572,8 +1611,15 @@ async def watchdog_status_update(body: WatchdogStatusRequest):
     return {"status": "ok"}
 
 @app.get("/search")
-async def search(query: str = "", limit: int = 5, rerank_results: bool = False, scope_id: str | None = None):
+async def search(
+    query: str = "",
+    limit: int = 5,
+    rerank_results: bool = False,
+    scope_id: str | None = None,
+    chat_id: str = "global",
+):
     search_scope_id = normalize_scope_id(scope_id)
+    search_chat_id = normalize_chat_id(chat_id)
     if query.strip() == "":
         with connect_db() as conn:
             with conn.cursor() as cur:
@@ -1582,11 +1628,12 @@ async def search(query: str = "", limit: int = 5, rerank_results: bool = False, 
                     SELECT id, content, memory_type, importance, confidence, frequency
                     FROM pages
                     WHERE is_archived = FALSE
+                      AND chat_id = %s
                       AND (%s IS NULL OR scope_id = %s)
                     ORDER BY id DESC
                     LIMIT %s
                     """,
-                    (search_scope_id, search_scope_id, limit),
+                    (search_chat_id, search_scope_id, search_scope_id, limit),
                 )
                 rows = cur.fetchall()
         ids = [r[0] for r in rows]
@@ -1630,11 +1677,12 @@ async def search(query: str = "", limit: int = 5, rerank_results: bool = False, 
                 FROM embeddings e
                 JOIN pages p ON p.id = e.page_id
                 WHERE p.is_archived = FALSE
+                                        AND p.chat_id = %s
                     AND (%s IS NULL OR p.scope_id = %s)
                 ORDER BY vector_distance
                 LIMIT %s
                 """,
-                  (qemb_str, search_scope_id, search_scope_id, limit * 2),
+                                    (qemb_str, search_chat_id, search_scope_id, search_scope_id, limit * 2),
             )
             vector_rows = cur.fetchall()
 
@@ -1645,12 +1693,13 @@ async def search(query: str = "", limit: int = 5, rerank_results: bool = False, 
                        ts_rank_cd(to_tsvector('english', p.content), plainto_tsquery('english', %s)) AS lexical_rank
                 FROM pages p
                 WHERE p.is_archived = FALSE
-                                    AND (%s IS NULL OR p.scope_id = %s)
+                    AND p.chat_id = %s
+                    AND (%s IS NULL OR p.scope_id = %s)
                   AND to_tsvector('english', p.content) @@ plainto_tsquery('english', %s)
                 ORDER BY lexical_rank DESC
                 LIMIT %s
                 """,
-                                (query, search_scope_id, search_scope_id, query, limit * 2),
+                            (query, search_chat_id, search_scope_id, search_scope_id, query, limit * 2),
             )
             lexical_rows = cur.fetchall()
 
@@ -1844,6 +1893,12 @@ async def dashboard(
                 )
                 scope_rows = cur.fetchall()
 
+                cur.execute(
+                    f"SELECT COUNT(*) FROM pages WHERE 1=1{list_scope_clause}",
+                    tuple(list_scope_params),
+                )
+                selected_scope_total_count = int(cur.fetchone()[0] or 0)
+
                 if query:
                     cur.execute(
                         f"SELECT id, content FROM pages WHERE content ILIKE %s{list_scope_clause} ORDER BY id DESC LIMIT %s OFFSET %s",
@@ -1945,6 +2000,13 @@ async def dashboard(
             f"{html.escape(option_label)}"
             "</option>"
         )
+
+    if active_scope == DASHBOARD_SCOPE_ALL:
+        selected_scope_label = "All users/scopes"
+    elif active_scope == DASHBOARD_SCOPE_UNSCOPED:
+        selected_scope_label = "Unscoped (legacy rows)"
+    else:
+        selected_scope_label = format_scope_label(active_scope)
     
     items = ""
     for r in rows:
@@ -2038,6 +2100,7 @@ async def dashboard(
                     <select name="selected_scope" style="margin-left:8px; padding:8px; border-radius:4px; border:1px solid #444; background:#1e1e1e; color:white; width:320px; max-width:100%;">
                         {scope_select_html}
                     </select>
+                                        <span style="margin-left:8px; color:#bcd; font-size:0.9rem;">Selected user: {html.escape(selected_scope_label)} ({selected_scope_total_count} messages)</span>
                                         <span style="margin-left:8px; color:#9ca3af; font-size:0.85rem;">For real names set SCOPE_LABELS_JSON in .env.</span>
                     <input type="hidden" name="health_stale_days" value="{safe_health_stale_days}">
                     <input type="hidden" name="health_confidence_threshold" value="{safe_health_confidence:.2f}">
