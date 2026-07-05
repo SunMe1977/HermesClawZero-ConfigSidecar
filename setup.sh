@@ -66,6 +66,15 @@ if [ "$PROVIDER" = "anthropic" ] && [ "$DEFAULT_EMBEDDING_PROVIDER" = "auto" ]; 
 fi
 read -p "Embedding provider (auto|ollama|openai|openrouter|gemini) [${DEFAULT_EMBEDDING_PROVIDER}]: " INPUT_EMBEDDING_PROVIDER
 FINAL_EMBEDDING_PROVIDER="${INPUT_EMBEDDING_PROVIDER:-$DEFAULT_EMBEDDING_PROVIDER}"
+FINAL_EMBEDDING_PROVIDER="$(echo "$FINAL_EMBEDDING_PROVIDER" | tr '[:upper:]' '[:lower:]')"
+
+case "$FINAL_EMBEDDING_PROVIDER" in
+    auto|ollama|openai|openrouter|gemini) ;;
+    *)
+        echo "[SETUP] Invalid EMBEDDING_PROVIDER '$FINAL_EMBEDDING_PROVIDER'. Falling back to 'auto'."
+        FINAL_EMBEDDING_PROVIDER="auto"
+        ;;
+esac
 
 if [ "$FINAL_EMBEDDING_PROVIDER" = "openrouter" ] && [ -z "$FINAL_OPENROUTER_API_KEY" ]; then
     read -p "Enter OPENROUTER_API_KEY for embeddings: " FINAL_OPENROUTER_API_KEY
@@ -75,6 +84,35 @@ if [ "$FINAL_EMBEDDING_PROVIDER" = "openai" ] && [ -z "$FINAL_OPENAI_API_KEY" ];
 fi
 if [ "$FINAL_EMBEDDING_PROVIDER" = "gemini" ] && [ -z "$FINAL_GEMINI_API_KEY" ]; then
     read -p "Enter GEMINI_API_KEY for embeddings: " FINAL_GEMINI_API_KEY
+fi
+
+# Auto-correct common key/provider mismatches to prevent runtime 401/500 loops.
+if [ "$PROVIDER" = "openai" ] && [[ "$FINAL_OPENAI_API_KEY" == sk-or-* ]]; then
+    echo "[SETUP] Detected OpenRouter key format in OPENAI_API_KEY. Switching AI_PROVIDER to openrouter."
+    PROVIDER="openrouter"
+    if [ -z "$FINAL_OPENROUTER_API_KEY" ]; then
+        FINAL_OPENROUTER_API_KEY="$FINAL_OPENAI_API_KEY"
+    fi
+    FINAL_OPENAI_API_KEY=""
+fi
+
+if [ "$PROVIDER" = "openrouter" ] && [[ "$FINAL_OPENROUTER_API_KEY" == sk-* ]] && [[ "$FINAL_OPENROUTER_API_KEY" != sk-or-* ]]; then
+    echo "[SETUP] Detected OpenAI-style key in OPENROUTER_API_KEY. Switching AI_PROVIDER to openai."
+    PROVIDER="openai"
+    if [ -z "$FINAL_OPENAI_API_KEY" ]; then
+        FINAL_OPENAI_API_KEY="$FINAL_OPENROUTER_API_KEY"
+    fi
+    FINAL_OPENROUTER_API_KEY=""
+fi
+
+if [ "$FINAL_EMBEDDING_PROVIDER" = "openai" ] && [ -z "$FINAL_OPENAI_API_KEY" ] && [ -n "$FINAL_OPENROUTER_API_KEY" ]; then
+    echo "[SETUP] EMBEDDING_PROVIDER=openai but OPENAI_API_KEY is empty. Using openrouter embeddings."
+    FINAL_EMBEDDING_PROVIDER="openrouter"
+fi
+
+if [ "$FINAL_EMBEDDING_PROVIDER" = "openrouter" ] && [ -z "$FINAL_OPENROUTER_API_KEY" ] && [ -n "$FINAL_OPENAI_API_KEY" ]; then
+    echo "[SETUP] EMBEDDING_PROVIDER=openrouter but OPENROUTER_API_KEY is empty. Using openai embeddings."
+    FINAL_EMBEDDING_PROVIDER="openai"
 fi
 
 PROVIDER_KEY_LINES=""

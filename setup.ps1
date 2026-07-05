@@ -66,6 +66,11 @@ $defaultEmbeddingProvider = if ($config.ContainsKey("EMBEDDING_PROVIDER") -and -
 if ($provider -eq "anthropic" -and $defaultEmbeddingProvider -eq "auto") { $defaultEmbeddingProvider = "openrouter" }
 $inputEmbeddingProvider = Read-Host "Embedding provider (auto|ollama|openai|openrouter|gemini) [$defaultEmbeddingProvider]"
 $EMBEDDING_PROVIDER = if ([string]::IsNullOrWhiteSpace($inputEmbeddingProvider)) { $defaultEmbeddingProvider } else { $inputEmbeddingProvider }
+$EMBEDDING_PROVIDER = $EMBEDDING_PROVIDER.ToLowerInvariant()
+if ($EMBEDDING_PROVIDER -notin @("auto", "ollama", "openai", "openrouter", "gemini")) {
+    Write-Host "[SETUP] Invalid EMBEDDING_PROVIDER '$EMBEDDING_PROVIDER'. Falling back to 'auto'." -ForegroundColor Yellow
+    $EMBEDDING_PROVIDER = "auto"
+}
 
 if ($EMBEDDING_PROVIDER -eq "openrouter" -and [string]::IsNullOrWhiteSpace($OPENROUTER_API_KEY)) {
     $OPENROUTER_API_KEY = Read-Host "Enter OPENROUTER_API_KEY for embeddings"
@@ -75,6 +80,31 @@ if ($EMBEDDING_PROVIDER -eq "openai" -and [string]::IsNullOrWhiteSpace($OPENAI_A
 }
 if ($EMBEDDING_PROVIDER -eq "gemini" -and [string]::IsNullOrWhiteSpace($GEMINI_API_KEY)) {
     $GEMINI_API_KEY = Read-Host "Enter GEMINI_API_KEY for embeddings"
+}
+
+# Auto-correct common key/provider mismatches to prevent runtime 401/500 loops.
+if ($provider -eq "openai" -and -not [string]::IsNullOrWhiteSpace($OPENAI_API_KEY) -and $OPENAI_API_KEY.StartsWith("sk-or-")) {
+    Write-Host "[SETUP] Detected OpenRouter key format in OPENAI_API_KEY. Switching AI_PROVIDER to openrouter." -ForegroundColor Yellow
+    $provider = "openrouter"
+    if ([string]::IsNullOrWhiteSpace($OPENROUTER_API_KEY)) { $OPENROUTER_API_KEY = $OPENAI_API_KEY }
+    $OPENAI_API_KEY = ""
+}
+
+if ($provider -eq "openrouter" -and -not [string]::IsNullOrWhiteSpace($OPENROUTER_API_KEY) -and $OPENROUTER_API_KEY.StartsWith("sk-") -and -not $OPENROUTER_API_KEY.StartsWith("sk-or-")) {
+    Write-Host "[SETUP] Detected OpenAI-style key in OPENROUTER_API_KEY. Switching AI_PROVIDER to openai." -ForegroundColor Yellow
+    $provider = "openai"
+    if ([string]::IsNullOrWhiteSpace($OPENAI_API_KEY)) { $OPENAI_API_KEY = $OPENROUTER_API_KEY }
+    $OPENROUTER_API_KEY = ""
+}
+
+if ($EMBEDDING_PROVIDER -eq "openai" -and [string]::IsNullOrWhiteSpace($OPENAI_API_KEY) -and -not [string]::IsNullOrWhiteSpace($OPENROUTER_API_KEY)) {
+    Write-Host "[SETUP] EMBEDDING_PROVIDER=openai but OPENAI_API_KEY is empty. Using openrouter embeddings." -ForegroundColor Yellow
+    $EMBEDDING_PROVIDER = "openrouter"
+}
+
+if ($EMBEDDING_PROVIDER -eq "openrouter" -and [string]::IsNullOrWhiteSpace($OPENROUTER_API_KEY) -and -not [string]::IsNullOrWhiteSpace($OPENAI_API_KEY)) {
+    Write-Host "[SETUP] EMBEDDING_PROVIDER=openrouter but OPENROUTER_API_KEY is empty. Using openai embeddings." -ForegroundColor Yellow
+    $EMBEDDING_PROVIDER = "openai"
 }
 
 # 4. Save Config
