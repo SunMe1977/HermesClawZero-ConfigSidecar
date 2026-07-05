@@ -1,2 +1,2 @@
 @echo off
-start "" /B C:\Users\hansj\.cloudflared\cloudflared.exe tunnel run openclawmemwin
+start "" /B "%USERPROFILE%\.cloudflared\cloudflared.exe" tunnel run openclawmemwin

@@ -2,11 +2,19 @@ import psycopg
 import ollama
 import os
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 # Lokaler Zugriff auf Postgres im Docker-Container
-DB_DSN = "postgresql://postgres:JH12345@host.docker.internal:5666/gbrain"
+DB_DSN = (
+    f"postgresql://{os.getenv('DB_USER', 'postgres')}:{os.getenv('DB_PASSWORD', '')}"
+    f"@{os.getenv('DB_HOST', 'host.docker.internal')}:{os.getenv('DB_PORT', '5666')}"
+    f"/{os.getenv('DB_NAME', 'gbrain')}"
+)
 
 # Ollama läuft lokal
-OLLAMA_HOST = "http://localhost:11434"
+OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
 
 client = ollama.Client(host=OLLAMA_HOST)
 

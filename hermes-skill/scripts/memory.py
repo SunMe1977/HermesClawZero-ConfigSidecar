@@ -3,25 +3,24 @@ import sys
 import os
 
 # Update these to match your HermesClawZero setup
-BASE_URL = os.getenv("MEM_PUBLIC_URL", "http://localhost:8000")
-API_KEY = os.getenv("API_KEY", "change_me_in_env")
-SYNC_DIR = os.getenv("MEM_SYNC_DIR", r"C:\dev\HermesClawZero-ConfigSidecar\sync")
+BASE_URL = os.getenv("OPENCLAW_URL", "http://localhost:8000")
+API_KEY = os.getenv("OPENCLAW_KEY", "")
+SYNC_DIR = os.getenv("OPENCLAW_SYNC_DIR", os.path.join(os.getcwd(), "sync"))
 
 def capture(text):
     url = f"{BASE_URL}/capture"
-    params = {"key": API_KEY}
     data = {"text": text}
     try:
-        response = requests.post(url, params=params, json=data)
+        response = requests.post(url, headers={"X-API-Key": API_KEY}, json=data)
         print(response.json())
     except Exception as e:
         print(f"Error: {e}")
 
 def search(query, limit=5):
     url = f"{BASE_URL}/search"
-    params = {"query": query, "limit": limit, "key": API_KEY}
+    params = {"query": query, "limit": limit}
     try:
-        response = requests.get(url, params=params)
+        response = requests.get(url, params=params, headers={"X-API-Key": API_KEY})
         print(response.json())
     except Exception as e:
         print(f"Error: {e}")

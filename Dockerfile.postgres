@@ -1,10 +1,8 @@
 # Basis: fertiges pgvector-Image
 FROM ankane/pgvector:latest
 
-# Environment-Variablen für Postgres
-ENV POSTGRES_USER=postgres
-ENV POSTGRES_PASSWORD=JH!§$2121
-ENV POSTGRES_DB=gbrain
+# POSTGRES_USER / POSTGRES_PASSWORD / POSTGRES_DB are provided
+# via docker-compose environment (see docker-compose.yml / .env)
 
 # Port
 EXPOSE 5432

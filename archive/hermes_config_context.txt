@@ -1,1 +1,0 @@
-Initial context seed: User hansj is configuring HermesClawZero-ConfigSidecar for Hermes long-term memory. System is running at http://localhost:8000/ and configured for automatic sync via C:\dev\HermesClawZero-ConfigSidecar\sync\ directory. User wants full awareness of past conversations.

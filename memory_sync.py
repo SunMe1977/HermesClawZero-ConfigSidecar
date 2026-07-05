@@ -12,7 +12,7 @@ load_dotenv()
 SYNC_FOLDERS = [pathlib.Path("sync"), pathlib.Path("inbox")]
 ARCHIVE_FOLDER = pathlib.Path("archive")
 API_URL = os.getenv("OPENCLAW_URL", "http://localhost:8000") + "/capture"
-API_KEY = os.getenv("OPENCLAW_KEY", "YOUR_API_KEY_HERE")
+API_KEY = os.getenv("OPENCLAW_KEY", "")
 PID_FILE = pathlib.Path("memory_sync.pid")
 
 def write_pid():
@@ -26,7 +26,7 @@ def import_file(path: pathlib.Path):
         return
 
     try:
-        resp = requests.post(API_URL, params={"key": API_KEY}, json={"text": text})
+        resp = requests.post(API_URL, headers={"X-API-Key": API_KEY}, json={"text": text})
         if resp.status_code != 200:
             print(f"[SYNC] Error {resp.status_code}: {resp.text}")
         else:

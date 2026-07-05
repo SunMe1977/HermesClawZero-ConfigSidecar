@@ -1,8 +1,9 @@
 import requests
 import os
+
 url = "http://localhost:8000/capture"
-key = "MYSECRET!!1344"
+key = os.getenv("OPENCLAW_KEY", "")
 text = "debug test"
-resp = requests.post(url, params={"key": key}, json={"text": text})
+resp = requests.post(url, headers={"X-API-Key": key}, json={"text": text})
 print(f"Status: {resp.status_code}")
 print(f"Response: {resp.text}")

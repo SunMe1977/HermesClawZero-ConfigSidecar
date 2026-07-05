@@ -1,4 +1,5 @@
 import sys
+import os
 import requests
 
 if len(sys.argv) < 2:
@@ -8,8 +9,9 @@ if len(sys.argv) < 2:
 text = sys.argv[1]
 
 resp = requests.post(
-    "http://localhost:8000/capture",
-    params={"text": text}
+    os.getenv("OPENCLAW_URL", "http://localhost:8000") + "/capture",
+    headers={"X-API-Key": os.getenv("OPENCLAW_KEY", "")},
+    json={"text": text},
 )
 
 print(resp.json())

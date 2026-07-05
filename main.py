@@ -1,5 +1,6 @@
 from fastapi import Body, FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
+import html
 import psycopg
 import ollama
 import os
@@ -8,7 +9,9 @@ from pydantic import BaseModel
 
 app = FastAPI()
 
-API_KEY = os.getenv("OPENCLAW_KEY", "change_me_in_env")
+API_KEY = os.getenv("OPENCLAW_KEY")
+if not API_KEY:
+    raise RuntimeError("OPENCLAW_KEY environment variable must be set")
 
 
 class CaptureRequest(BaseModel):
@@ -19,7 +22,7 @@ async def url_api_key(request, call_next):
     if request.url.path in ["/openapi.json", "/docs", "/docs/swagger-ui.css", "/docs/swagger-ui-bundle.js"]:
         return await call_next(request)
 
-    key = request.query_params.get("key")
+    key = request.headers.get("x-api-key") or request.query_params.get("key")
     if key != API_KEY:
         return HTMLResponse("Unauthorized", status_code=401)
     return await call_next(request)
@@ -311,7 +314,7 @@ async def view_page_html(page_id: int):
     if not row:
         return "<h1>Not found</h1>"
 
-    content = row[0]
+    content = html.escape(row[0])
     return f"""
     <html>
       <head><title>Page {page_id}</title></head>
@@ -356,7 +359,7 @@ async def dashboard(query: str | None = None):
 
     items = ""
     for r in rows:
-        items += f"<li><a href='/page_html?page_id={r[0]}'>[{r[0]}]</a> {r[1][:80]}</li>"
+        items += f"<li><a href='/page_html?page_id={r[0]}'>[{r[0]}]</a> {html.escape(r[1][:80])}</li>"
 
     return f"""
     <html>
@@ -364,7 +367,7 @@ async def dashboard(query: str | None = None):
       <body>
         <h1>Memory Dashboard</h1>
         <form method="get" action="/dashboard">
-          <input type="text" name="query" placeholder="Suche..." value="{query or ''}">
+          <input type="text" name="query" placeholder="Suche..." value="{html.escape(query or '')}">
           <button type="submit">Search</button>
         </form>
 

@@ -5,9 +5,12 @@ import requests
 import pathlib
 
 # Configuration
-DB_PATH = r"C:\Users\hansj\AppData\Local\hermes\state.db" # Adjusted for standard Windows AppData
-API_URL = os.getenv("MEM_PUBLIC_URL", "https://openclawmemwin.postarmory.com") + "/capture"
-API_KEY = os.getenv("API_KEY", "YOUR_API_KEY_HERE")
+DB_PATH = os.getenv(
+    "HERMES_STATE_DB",
+    os.path.join(os.getenv("LOCALAPPDATA", ""), "hermes", "state.db"),
+)
+API_URL = os.getenv("OPENCLAW_URL", "http://localhost:8000") + "/capture"
+API_KEY = os.getenv("OPENCLAW_KEY", "")
 LAST_ID_FILE = pathlib.Path("sync_last_id.txt")
 
 def get_last_synced_id():
@@ -37,7 +40,7 @@ def sync_messages():
         if content and role in ['user', 'assistant']:
             print(f"[WATCHDOG] Syncing message {msg_id}")
             try:
-                requests.post(API_URL, params={"key": API_KEY}, json={"text": f"[{role}]: {content}"})
+                requests.post(API_URL, headers={"X-API-Key": API_KEY}, json={"text": f"[{role}]: {content}"})
                 save_last_synced_id(msg_id)
             except Exception as e:
                 print(f"[WATCHDOG] Sync error: {e}")

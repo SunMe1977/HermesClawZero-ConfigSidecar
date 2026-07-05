@@ -8,6 +8,13 @@ venv/
 *.log
 memory_sync.pid
 
+# Runtime state
+memory_sync.lock
+sync_last_id.txt
+archive/
+sync/
+inbox/
+
 # OS
 .DS_Store
 Thumbs.db
