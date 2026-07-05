@@ -16,11 +16,13 @@ The **HermesClawZero-ConfigSidecar** is a modular, automation-first sidecar serv
 
 No manual configuration needed. Just run the setup script for your OS. It will verify dependencies, configure your `.env`, and optionally setup **Ollama** in Docker.
 
-### Supported API Providers
-- **Local**: Ollama (Docker)
-- **Cloud**: OpenAI, Google Gemini, Anthropic, OpenRouter
+### 🤖 AI-Agent Installation (Auto-Setup)
+You can install this project automatically using an AI agent (like OpenClaw or Hermes). Simply paste this URL to your agent and say: *"Install this project from GitHub"*:
+`https://github.com/SunMe1977/HermesClawZero-ConfigSidecar`
 
-*(After the first run, update the `OPENCLAW_KEY` in the generated `.env` file with your secret.)*
+### Manual Setup
+- **Windows**: Double-click `setup.bat`.
+- **Linux/macOS**: Run `bash setup.sh`.
 
 ---
 ## Requirements
@@ -34,7 +36,7 @@ No manual configuration needed. Just run the setup script for your OS. It will v
 The project follows a decoupled "sidecar" pattern:
 1.  **Capture**: The agent (Hermes) appends session summaries and significant findings to a local `sync/` directory.
 2.  **Sync (The Watchdog)**: A background service (`memory_sync.py`) monitors the `sync/` directory and `inbox/`. When new files appear, it automatically ingests them.
-3.  **Persistence**: The content is posted to a remote or local **OpenClaw** memory service (vector store), making your agent's history queryable via semantic search.
+3.  **Persistence**: The content is posted to a remote or local memory service (vector store), making your agent's history queryable via semantic search.
 
 ## Tools
 This project provides a robust CLI (`scripts/memory.py`), a drag-and-drop ingest tool, and maintenance utilities:
@@ -51,7 +53,7 @@ This project provides a robust CLI (`scripts/memory.py`), a drag-and-drop ingest
 - **Maintenance**: Regularly run `maintenance.bat` if you have imported large batches of data.
 
 ## Troubleshooting
-- **401 Unauthorized**: Ensure your `OPENCLAW_KEY` in `.env` matches the server secret.
+- **401 Unauthorized**: Ensure API_KEY in .env matches the server secret.
 - **Sync service not running**: Check if `memory_sync.py` is active in your process monitor.
 - **Log missing from memory**: Verify that the file was written to the `sync/` directory. If it remains there, the watchdog process needs to be restarted.
 
