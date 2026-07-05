@@ -39,13 +39,24 @@ if ($provider_key_name) {
 
 # 4. Save Config
 $syncDir = (Get-Location).Path + '\sync'
+$existingApiKey = $config['API_KEY']
+if ([string]::IsNullOrWhiteSpace($existingApiKey)) { $existingApiKey = $config['OPENCLAW_KEY'] }
+$existingBaseUrl = $config['MEM_PUBLIC_URL']
+if ([string]::IsNullOrWhiteSpace($existingBaseUrl)) { $existingBaseUrl = $config['OPENCLAW_URL'] }
+if ([string]::IsNullOrWhiteSpace($existingBaseUrl)) { $existingBaseUrl = "http://localhost:8000" }
+$existingSyncDir = $config['MEM_SYNC_DIR']
+if ([string]::IsNullOrWhiteSpace($existingSyncDir)) { $existingSyncDir = $config['OPENCLAW_SYNC_DIR'] }
+if ([string]::IsNullOrWhiteSpace($existingSyncDir)) { $existingSyncDir = $syncDir }
+$DASHBOARD_PASS = Get-Input "DASHBOARD_PASSWORD" "Enter Dashboard Password (for web login)" "admin"
+$DB_PASSWORD = Get-Input "DB_PASSWORD" "Enter Database Password" ""
 $content = @"
 AI_PROVIDER=$provider
 $provider_key_name=$key
 OPENCLAW_URL=https://openclawmemwin.postarmory.com
 OPENCLAW_KEY=$($config['OPENCLAW_KEY'])
 OPENCLAW_SYNC_DIR=$syncDir
-DB_PASSWORD=$($config['DB_PASSWORD'])
+DB_PASSWORD=$DB_PASSWORD
+DASHBOARD_PASSWORD=$DASHBOARD_PASS
 OLLAMA_HOST=http://host.docker.internal:11435
 "@
 $content | Out-File -FilePath $envFile -Encoding UTF8
