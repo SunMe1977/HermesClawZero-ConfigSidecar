@@ -8,6 +8,20 @@ if ! command -v docker &> /dev/null; then echo "[!] Docker not found."; exit 1; 
 # 2. Dependencies
 python3 -m pip install -r requirements.txt
 
+# Load current .env for defaults (robust against spaces/special chars in values)
+if [ -f .env ]; then
+    while IFS= read -r line || [ -n "$line" ]; do
+        case "$line" in
+            ''|'#'*) continue ;;
+        esac
+        key="${line%%=*}"
+        value="${line#*=}"
+        if [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+            export "$key=$value"
+        fi
+    done < .env
+fi
+
 # 3. Provider Menu
 echo "Select Primary AI Provider:"
 echo "1. Local Ollama (Docker)"
@@ -46,19 +60,11 @@ case "$PROVIDER" in
     openrouter) FINAL_OPENROUTER_API_KEY="$KEY" ;;
 esac
 
-# Load current .env for defaults (robust against spaces/special chars in values)
-if [ -f .env ]; then
-    while IFS= read -r line || [ -n "$line" ]; do
-        case "$line" in
-            ''|'#'*) continue ;;
-        esac
-        key="${line%%=*}"
-        value="${line#*=}"
-        if [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
-            export "$key=$value"
-        fi
-    done < .env
-fi
+PROVIDER_KEY_LINES=""
+if [ -n "$FINAL_OPENAI_API_KEY" ]; then PROVIDER_KEY_LINES+="OPENAI_API_KEY=$FINAL_OPENAI_API_KEY\n"; fi
+if [ -n "$FINAL_GEMINI_API_KEY" ]; then PROVIDER_KEY_LINES+="GEMINI_API_KEY=$FINAL_GEMINI_API_KEY\n"; fi
+if [ -n "$FINAL_ANTHROPIC_API_KEY" ]; then PROVIDER_KEY_LINES+="ANTHROPIC_API_KEY=$FINAL_ANTHROPIC_API_KEY\n"; fi
+if [ -n "$FINAL_OPENROUTER_API_KEY" ]; then PROVIDER_KEY_LINES+="OPENROUTER_API_KEY=$FINAL_OPENROUTER_API_KEY\n"; fi
 
 read -p "Enter API Key [${API_KEY:-YOUR_KEY_HERE}]: " INPUT_API_KEY
 read -p "Enter Dashboard Password [${DASHBOARD_PASSWORD:-admin}]: " INPUT_DASHBOARD_PASS
@@ -95,10 +101,7 @@ read -p "Enter Telegram Chat ID [${TELEGRAM_CHAT_ID:-}]: " INPUT_TELEGRAM_CHAT_I
 
 cat <<EOF > .env
 AI_PROVIDER=$PROVIDER
-OPENAI_API_KEY=$FINAL_OPENAI_API_KEY
-GEMINI_API_KEY=$FINAL_GEMINI_API_KEY
-ANTHROPIC_API_KEY=$FINAL_ANTHROPIC_API_KEY
-OPENROUTER_API_KEY=$FINAL_OPENROUTER_API_KEY
+$(printf "%b" "$PROVIDER_KEY_LINES")
 API_URL=https://openclawmemwin.postarmory.com
 API_KEY=${INPUT_API_KEY:-${API_KEY:-"YOUR_KEY_HERE"}}
 SYNC_DIR=$(pwd)/sync
