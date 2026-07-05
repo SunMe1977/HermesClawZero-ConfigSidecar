@@ -1651,7 +1651,7 @@ async def dashboard(
         <style>body {{ font-family: sans-serif; background-color: #121212; color: #fff; padding: 20px; }} h1 {{ border-bottom: 2px solid #333; padding-bottom: 10px; }} input {{ padding: 8px; width: 300px; border-radius: 4px; border: 1px solid #444; background: #1e1e1e; color: white; }} button {{ padding: 8px 16px; background: #4da6ff; color: white; border: none; border-radius: 4px; cursor: pointer; }} ul {{ list-style-type: none; padding: 0; margin-top: 20px; }}</style>
       </head>
       <body>
-        <h1>Memory Dashboard (Page {page})</h1>
+        <h1>Memory Dashboard (Messages: {total_items})</h1>
                 {optimizer_banner}
             {dry_run_banner}
             {restore_banner}
