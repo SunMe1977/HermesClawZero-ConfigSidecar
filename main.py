@@ -131,7 +131,7 @@ def get_current_username(
 @app.middleware("http")
 async def url_api_key(request, call_next):
     exempt_paths = [
-        "/openapi.json", "/docs", "/docs/swagger-ui.css", "/docs/swagger-ui-bundle.js",
+        "/", "/openapi.json", "/docs", "/docs/swagger-ui.css", "/docs/swagger-ui-bundle.js",
         "/dashboard", "/delete", "/export"
     ]
     if (
@@ -148,6 +148,11 @@ async def url_api_key(request, call_next):
     if key != API_KEY:
         return HTMLResponse("Unauthorized", status_code=401)
     return await call_next(request)
+
+
+@app.get("/")
+async def root_redirect():
+    return RedirectResponse(url="/dashboard", status_code=307)
 
 
 # ---------------------------------------------------------

@@ -59,9 +59,37 @@ $APP_VERSION = Get-Input "APP_VERSION" "Enter Base App Version" "0.1.0"
 $AUTO_UPDATE_ENABLED = Get-Input "AUTO_UPDATE_ENABLED" "Enable Auto Update Worker? (true/false)" "false"
 $AUTO_UPDATE_APPLY = Get-Input "AUTO_UPDATE_APPLY" "Auto apply updates when found? (true/false)" "false"
 $AUTO_UPDATE_INTERVAL_MINUTES = Get-Input "AUTO_UPDATE_INTERVAL_MINUTES" "Auto update check interval (minutes)" "60"
-$AUTO_UPDATE_REMOTE = Get-Input "AUTO_UPDATE_REMOTE" "Git remote for updates" "origin"
-$AUTO_UPDATE_BRANCH = Get-Input "AUTO_UPDATE_BRANCH" "Git branch for updates" "main"
-$UPDATE_REPO_DIR = Get-Input "UPDATE_REPO_DIR" "Repo path used by updater" ((Get-Location).Path)
+$detectedRepoDir = (Get-Location).Path
+$detectedRemote = "origin"
+$detectedBranch = "main"
+if (Get-Command "git" -ErrorAction SilentlyContinue) {
+    $insideWorkTree = git rev-parse --is-inside-work-tree 2>$null
+    if ($LASTEXITCODE -eq 0 -and ($insideWorkTree -join "").Trim() -eq "true") {
+        $repoTop = git rev-parse --show-toplevel 2>$null
+        if ($LASTEXITCODE -eq 0 -and $repoTop) {
+            $detectedRepoDir = ($repoTop -join "").Trim()
+        }
+
+        $upstream = git rev-parse --abbrev-ref --symbolic-full-name "@{u}" 2>$null
+        if ($LASTEXITCODE -eq 0 -and $upstream -and ($upstream -join "") -match '^([^/]+)/(.+)$') {
+            $detectedRemote = $matches[1]
+            $detectedBranch = $matches[2]
+        }
+        else {
+            $currentBranch = git branch --show-current 2>$null
+            if ($LASTEXITCODE -eq 0 -and $currentBranch) {
+                $detectedBranch = ($currentBranch -join "").Trim()
+            }
+            $firstRemote = git remote 2>$null | Select-Object -First 1
+            if ($firstRemote) {
+                $detectedRemote = ($firstRemote -join "").Trim()
+            }
+        }
+    }
+}
+$AUTO_UPDATE_REMOTE = Get-Input "AUTO_UPDATE_REMOTE" "Git remote for updates" $detectedRemote
+$AUTO_UPDATE_BRANCH = Get-Input "AUTO_UPDATE_BRANCH" "Git branch for updates" $detectedBranch
+$UPDATE_REPO_DIR = Get-Input "UPDATE_REPO_DIR" "Repo path used by updater" $detectedRepoDir
 $UPDATE_RESTART_COMMAND = Get-Input "UPDATE_RESTART_COMMAND" "Restart command after update (optional)" ""
 
 $content = @"

@@ -41,9 +41,26 @@ read -p "Enter Base App Version [${APP_VERSION:-0.1.0}]: " INPUT_APP_VERSION
 read -p "Enable Auto Update Worker? (true/false) [${AUTO_UPDATE_ENABLED:-false}]: " INPUT_AUTO_UPDATE_ENABLED
 read -p "Auto apply updates when found? (true/false) [${AUTO_UPDATE_APPLY:-false}]: " INPUT_AUTO_UPDATE_APPLY
 read -p "Auto update interval in minutes [${AUTO_UPDATE_INTERVAL_MINUTES:-60}]: " INPUT_AUTO_UPDATE_INTERVAL_MINUTES
-read -p "Git remote for updates [${AUTO_UPDATE_REMOTE:-origin}]: " INPUT_AUTO_UPDATE_REMOTE
-read -p "Git branch for updates [${AUTO_UPDATE_BRANCH:-main}]: " INPUT_AUTO_UPDATE_BRANCH
-read -p "Repo path for updater [${UPDATE_REPO_DIR:-$(pwd)}]: " INPUT_UPDATE_REPO_DIR
+DETECTED_REPO_DIR="$(pwd)"
+DETECTED_REMOTE="origin"
+DETECTED_BRANCH="main"
+if command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    DETECTED_REPO_DIR="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+    UPSTREAM_REF="$(git rev-parse --abbrev-ref --symbolic-full-name @{u} 2>/dev/null || true)"
+    if [ -n "$UPSTREAM_REF" ] && [[ "$UPSTREAM_REF" == */* ]]; then
+        DETECTED_REMOTE="${UPSTREAM_REF%%/*}"
+        DETECTED_BRANCH="${UPSTREAM_REF#*/}"
+    else
+        CURRENT_BRANCH="$(git branch --show-current 2>/dev/null || true)"
+        FIRST_REMOTE="$(git remote 2>/dev/null | head -n 1)"
+        if [ -n "$CURRENT_BRANCH" ]; then DETECTED_BRANCH="$CURRENT_BRANCH"; fi
+        if [ -n "$FIRST_REMOTE" ]; then DETECTED_REMOTE="$FIRST_REMOTE"; fi
+    fi
+fi
+
+read -p "Git remote for updates [${AUTO_UPDATE_REMOTE:-$DETECTED_REMOTE}]: " INPUT_AUTO_UPDATE_REMOTE
+read -p "Git branch for updates [${AUTO_UPDATE_BRANCH:-$DETECTED_BRANCH}]: " INPUT_AUTO_UPDATE_BRANCH
+read -p "Repo path for updater [${UPDATE_REPO_DIR:-$DETECTED_REPO_DIR}]: " INPUT_UPDATE_REPO_DIR
 read -p "Restart command after update (optional) [${UPDATE_RESTART_COMMAND:-}]: " INPUT_UPDATE_RESTART_COMMAND
 
 # 4. Write .env
