@@ -49,8 +49,9 @@ python memory_sync.py
 ```
 
 ## Tools
-This project provides a robust CLI (`scripts/memory.py`) for interacting with the service:
+This project provides a robust CLI (`scripts/memory.py`) and a simple drag-and-drop ingest tool for interacting with the service:
 
+- **Ingest**: Drag and drop any file onto `ingest.bat` to automatically copy it to the `sync/` directory.
 - **Capture**: `python scripts/memory.py capture "The user prefers to work in C:/dev/"`
 - **Search**: `python scripts/memory.py search "where does the user work?"`
 - **Autosave**: `python scripts/memory.py autosave "content..." "filename.txt"`
