@@ -4,7 +4,7 @@ import os
 
 # Update these to match your HermesClawZero setup
 BASE_URL = os.getenv("OPENCLAW_URL", "https://openclawmemwin.postarmory.com")
-API_KEY = os.getenv("OPENCLAW_KEY", "MYSECRET!!1344")
+API_KEY = os.getenv("OPENCLAW_KEY", "YOUR_API_KEY_HERE")
 SYNC_DIR = os.getenv("OPENCLAW_SYNC_DIR", r"C:\dev\HermesClawZero-ConfigSidecar\sync")
 
 def capture(text):

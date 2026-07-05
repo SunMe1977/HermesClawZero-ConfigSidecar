@@ -8,7 +8,7 @@ This skill manages long-term semantic memory using the HermesClawZero API. It en
 
 ## API Configuration
 - Base URL: `https://openclawmemwin.postarmory.com`
-- API Key: `MYSECRET!!1344`
+- API Key: `YOUR_API_KEY_HERE`
 
 ## Tools
 1. **capture(text: str)**: Saves text to memory.

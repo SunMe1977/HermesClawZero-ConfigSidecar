@@ -13,7 +13,7 @@ This project integrates directly with Hermes Agent for seamless semantic memory.
 ⭐ Configuration: Hermes <-> HermesClawZero
 Enable the HermesClawZero skill and configure the environment variables:
 OPENCLAW_URL=http://localhost:8000
-OPENCLAW_KEY=MYSECRET!!1344
+OPENCLAW_KEY=YOUR_API_KEY_HERE
 OPENCLAW_SYNC_DIR=C:/dev/HermesClawZero-ConfigSidecar/sync
 ```
 
@@ -73,7 +73,7 @@ Now perform the following EXACT steps:
 3. Extract ALL page IDs from the search results.
 
 4. For each page ID, call:
-   GET /page?page_id=ID&key=MYSECRET!!1344
+      GET /page?page_id=ID&key=YOUR_API_KEY_HERE
 
 5. Return the full list of pages as the "Full Memory Dump".
 
