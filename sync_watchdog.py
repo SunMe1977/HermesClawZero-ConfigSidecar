@@ -59,6 +59,7 @@ def _default_hermes_db_path() -> str:
 DB_PATH = os.getenv("HERMES_DB_PATH", _default_hermes_db_path())
 BASE_URL = os.getenv("MEM_PUBLIC_URL") or os.getenv("OPENCLAW_URL") or "http://localhost:8010"
 API_URL = BASE_URL.rstrip("/") + "/capture"
+BATCH_API_URL = BASE_URL.rstrip("/") + "/capture/batch"
 API_KEY = os.getenv("API_KEY") or os.getenv("OPENCLAW_KEY")
 LAST_ID_FILE = pathlib.Path("sync_last_id.txt")
 FAILED_IDS_FILE = pathlib.Path("sync_failed_ids.json")
@@ -175,6 +176,7 @@ def sync_messages() -> tuple[bool, int]:
         return False, 0
 
     processed_count = 0
+    sync_batch = []
     
     for row in rows:
         msg_id, content, role = row
@@ -184,62 +186,74 @@ def sync_messages() -> tuple[bool, int]:
             _post_watchdog_status(msg_id, latest_source_id, "")
             processed_count += 1
             continue
+        sync_batch.append((msg_id, role, content))
 
-        print(f"[WATCHDOG] Syncing message {msg_id}")
-        try:
-            resp = SESSION.post(
-                API_URL,
-                params={"key": API_KEY},
-                json={"text": f"[{role}]: {content}"},
-                timeout=REQUEST_TIMEOUT_SECONDS,
-            )
-            resp.raise_for_status()
-            save_last_synced_id(msg_id)
-            _post_watchdog_status(msg_id, latest_source_id, "")
+    if not sync_batch:
+        conn.close()
+        return True, processed_count
+
+    first_msg_id = sync_batch[0][0]
+    last_msg_id = sync_batch[-1][0]
+    print(f"[WATCHDOG] Syncing batch {first_msg_id}..{last_msg_id} ({len(sync_batch)} messages)")
+    try:
+        resp = SESSION.post(
+            BATCH_API_URL,
+            params={"key": API_KEY},
+            json={
+                "skip_dedupe": True,
+                "items": [
+                    {"msg_id": int(msg_id), "text": f"[{role}]: {content}"}
+                    for msg_id, role, content in sync_batch
+                ],
+            },
+            timeout=max(REQUEST_TIMEOUT_SECONDS, 60),
+        )
+        resp.raise_for_status()
+
+        save_last_synced_id(last_msg_id)
+        _post_watchdog_status(last_msg_id, latest_source_id, "")
+        for msg_id, _, _ in sync_batch:
             _clear_failed_id(failed_counts, msg_id)
-            processed_count += 1
-        except requests.HTTPError:
-            status_code = resp.status_code if "resp" in locals() else 0
-            response_preview = ""
-            if "resp" in locals():
-                response_preview = (resp.text or "").strip().replace("\n", " ")[:500]
+        processed_count += len(sync_batch)
+    except requests.HTTPError:
+        status_code = resp.status_code if "resp" in locals() else 0
+        response_preview = ""
+        if "resp" in locals():
+            response_preview = (resp.text or "").strip().replace("\n", " ")[:500]
 
-            lower_preview = response_preview.lower()
-            if status_code in (401, 403) or "invalid_api_key" in lower_preview or "incorrect api key" in lower_preview:
-                _post_watchdog_status(last_id, latest_source_id, f"auth error on message {msg_id}: {response_preview or 'invalid provider key'}")
-                print(
-                    "[WATCHDOG] Disabled: capture authentication failed (invalid provider key or provider mismatch). "
-                    "Fix .env provider/key settings, then restart start.sh/start.bat."
-                )
-                raise SystemExit(0)
-
-            failed_counts[msg_id] = failed_counts.get(msg_id, 0) + 1
-            _save_failed_id_counts(failed_counts)
-
+        lower_preview = response_preview.lower()
+        if status_code in (401, 403) or "invalid_api_key" in lower_preview or "incorrect api key" in lower_preview:
+            _post_watchdog_status(last_id, latest_source_id, f"auth error on message {first_msg_id}: {response_preview or 'invalid provider key'}")
             print(
-                f"[WATCHDOG] Sync HTTP error on message {msg_id}: status={status_code}, "
-                f"attempt={failed_counts[msg_id]}/{MAX_RETRIES_PER_MESSAGE}, detail={response_preview or 'n/a'}"
+                "[WATCHDOG] Disabled: capture authentication failed (invalid provider key or provider mismatch). "
+                "Fix .env provider/key settings, then restart start.sh/start.bat."
             )
-            _post_watchdog_status(last_id, latest_source_id, f"http {status_code} on message {msg_id}: {response_preview or 'n/a'}")
+            raise SystemExit(0)
 
-            if failed_counts[msg_id] >= MAX_RETRIES_PER_MESSAGE:
-                print(
-                    f"[WATCHDOG] Skipping message {msg_id} after {failed_counts[msg_id]} failed attempts "
-                    "to keep sync progressing."
-                )
-                save_last_synced_id(msg_id)
-                _post_watchdog_status(msg_id, latest_source_id, "")
-                _clear_failed_id(failed_counts, msg_id)
-                processed_count += 1
-                continue
+        failed_counts[first_msg_id] = failed_counts.get(first_msg_id, 0) + 1
+        _save_failed_id_counts(failed_counts)
 
+        print(
+            f"[WATCHDOG] Sync HTTP error on batch starting at message {first_msg_id}: status={status_code}, "
+            f"attempt={failed_counts[first_msg_id]}/{MAX_RETRIES_PER_MESSAGE}, detail={response_preview or 'n/a'}"
+        )
+        _post_watchdog_status(last_id, latest_source_id, f"http {status_code} on message {first_msg_id}: {response_preview or 'n/a'}")
+
+        if failed_counts[first_msg_id] >= MAX_RETRIES_PER_MESSAGE:
+            print(
+                f"[WATCHDOG] Skipping message {first_msg_id} after {failed_counts[first_msg_id]} failed attempts "
+                "to keep sync progressing."
+            )
+            save_last_synced_id(first_msg_id)
+            _post_watchdog_status(first_msg_id, latest_source_id, "")
+            _clear_failed_id(failed_counts, first_msg_id)
+            processed_count += 1
+        else:
             print("[WATCHDOG] Stopping this cycle to avoid log flood; will retry from last successful ID.")
-            break
-        except Exception as e:
-            print(f"[WATCHDOG] Sync error on message {msg_id}: {e}")
-            _post_watchdog_status(last_id, latest_source_id, f"sync error on message {msg_id}: {e}")
-            print("[WATCHDOG] Stopping this cycle to avoid log flood; will retry from last successful ID.")
-            break
+    except Exception as e:
+        print(f"[WATCHDOG] Sync error on batch starting at message {first_msg_id}: {e}")
+        _post_watchdog_status(last_id, latest_source_id, f"sync error on message {first_msg_id}: {e}")
+        print("[WATCHDOG] Stopping this cycle to avoid log flood; will retry from last successful ID.")
     
     conn.close()
     return True, processed_count

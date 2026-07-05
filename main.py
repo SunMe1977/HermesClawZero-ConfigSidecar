@@ -56,6 +56,16 @@ class CaptureRequest(BaseModel):
     text: str
 
 
+class BatchCaptureItem(BaseModel):
+    msg_id: int | None = None
+    text: str
+
+
+class BatchCaptureRequest(BaseModel):
+    items: list[BatchCaptureItem]
+    skip_dedupe: bool = True
+
+
 class ArchiveSelectionRequest(BaseModel):
     page_ids: list[int]
     archive_reason: str = "manual_review"
@@ -362,6 +372,52 @@ def generate_embedding(text: str) -> list[float]:
             "Use one of: ollama, openai, openrouter, gemini"
         ),
     )
+
+
+def generate_embeddings(texts: list[str]) -> list[list[float]]:
+    if not texts:
+        return []
+
+    provider = resolve_embedding_provider()
+
+    if provider == "openai":
+        if not OPENAI_API_KEY:
+            raise HTTPException(status_code=500, detail="OPENAI_API_KEY is required when AI_PROVIDER=openai")
+        response = requests.post(
+            "https://api.openai.com/v1/embeddings",
+            headers={
+                "Authorization": f"Bearer {OPENAI_API_KEY}",
+                "Content-Type": "application/json",
+            },
+            json={"model": OPENAI_EMBED_MODEL, "input": texts},
+            timeout=90,
+        )
+        if response.status_code >= 400:
+            _raise_embedding_upstream_error("OpenAI", response)
+        data = response.json().get("data", [])
+        data_sorted = sorted(data, key=lambda d: d.get("index", 0))
+        return [d["embedding"] for d in data_sorted]
+
+    if provider == "openrouter":
+        if not OPENROUTER_API_KEY:
+            raise HTTPException(status_code=500, detail="OPENROUTER_API_KEY is required when AI_PROVIDER=openrouter")
+        response = requests.post(
+            "https://openrouter.ai/api/v1/embeddings",
+            headers={
+                "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                "Content-Type": "application/json",
+            },
+            json={"model": OPENROUTER_EMBED_MODEL, "input": texts},
+            timeout=90,
+        )
+        if response.status_code >= 400:
+            _raise_embedding_upstream_error("OpenRouter", response)
+        data = response.json().get("data", [])
+        data_sorted = sorted(data, key=lambda d: d.get("index", 0))
+        return [d["embedding"] for d in data_sorted]
+
+    # Fallback providers currently run per-text.
+    return [generate_embedding(t) for t in texts]
 
 
 def provider_runtime_info() -> dict:
@@ -1297,6 +1353,98 @@ async def capture(text: str | None = None, body: CaptureRequest | None = Body(de
         "score": meta["score"],
         "importance": round(meta["importance"], 3),
         "confidence": round(meta["confidence"], 3),
+    }
+
+
+@app.post("/capture/batch", dependencies=[Depends(require_api_key)])
+async def capture_batch(body: BatchCaptureRequest):
+    if not body.items:
+        raise HTTPException(status_code=400, detail="items are required")
+
+    prepared: list[tuple[int | None, str, dict]] = []
+    for item in body.items:
+        text = (item.text or "").strip()
+        if not text:
+            continue
+        meta = score_memory(text)
+        prepared.append((item.msg_id, text, meta))
+
+    if not prepared:
+        raise HTTPException(status_code=400, detail="no valid non-empty items")
+
+    if body.skip_dedupe:
+        dedupe_candidates = prepared
+    else:
+        dedupe_candidates = []
+        for msg_id, text, meta in prepared:
+            similar = find_similar_page(text)
+            if similar:
+                with connect_db() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            """
+                            UPDATE pages
+                            SET frequency = frequency + 1,
+                                confidence = LEAST(1.0, confidence + 0.01),
+                                last_used = NOW(),
+                                updated_at = NOW()
+                            WHERE id = %s
+                            """,
+                            (similar["id"],),
+                        )
+                        conn.commit()
+                continue
+            dedupe_candidates.append((msg_id, text, meta))
+
+    if not dedupe_candidates:
+        return {"status": "ok", "processed": 0, "msg_ids": []}
+
+    texts = [x[1] for x in dedupe_candidates]
+    embeddings = generate_embeddings(texts)
+    if len(embeddings) != len(texts):
+        raise HTTPException(status_code=500, detail="embedding batch size mismatch")
+
+    inserted_msg_ids: list[int] = []
+    with connect_db() as conn:
+        with conn.cursor() as cur:
+            page_ids: list[int] = []
+            for msg_id, text, meta in dedupe_candidates:
+                cur.execute(
+                    """
+                    INSERT INTO pages (
+                        content, memory_type, importance, confidence, frequency,
+                        sentiment, source, ttl_days, updated_at, last_used
+                    )
+                    VALUES (%s, %s, %s, %s, 1, %s, %s, %s, NOW(), NOW())
+                    RETURNING id
+                    """,
+                    (
+                        text,
+                        meta["memory_type"],
+                        meta["importance"],
+                        meta["confidence"],
+                        meta["sentiment"],
+                        meta["source"],
+                        meta["ttl_days"],
+                    ),
+                )
+                page_ids.append(cur.fetchone()[0])
+                if msg_id is not None:
+                    inserted_msg_ids.append(int(msg_id))
+
+            for page_id, embedding in zip(page_ids, embeddings):
+                emb_str = embedding_to_pgvector_literal(embedding)
+                cur.execute(
+                    "INSERT INTO embeddings (page_id, embedding) VALUES (%s, %s::vector)",
+                    (page_id, emb_str),
+                )
+
+            conn.commit()
+
+    return {
+        "status": "ok",
+        "processed": len(dedupe_candidates),
+        "msg_ids": inserted_msg_ids,
     }
 
 @app.post("/transcribe", dependencies=[Depends(require_api_key)])
