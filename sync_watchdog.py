@@ -3,6 +3,7 @@ import sqlite3
 import os
 import requests
 import pathlib
+import json
 
 try:
     from dotenv import load_dotenv
@@ -60,8 +61,10 @@ BASE_URL = os.getenv("MEM_PUBLIC_URL") or os.getenv("OPENCLAW_URL") or "http://l
 API_URL = BASE_URL.rstrip("/") + "/capture"
 API_KEY = os.getenv("API_KEY") or os.getenv("OPENCLAW_KEY")
 LAST_ID_FILE = pathlib.Path("sync_last_id.txt")
+FAILED_IDS_FILE = pathlib.Path("sync_failed_ids.json")
 MAX_MESSAGES_PER_CYCLE = int(os.getenv("WATCHDOG_MAX_MESSAGES_PER_CYCLE", "50"))
 REQUEST_TIMEOUT_SECONDS = int(os.getenv("WATCHDOG_REQUEST_TIMEOUT_SECONDS", "20"))
+MAX_RETRIES_PER_MESSAGE = int(os.getenv("WATCHDOG_MAX_RETRIES_PER_MESSAGE", "5"))
 
 
 def _api_reachable() -> bool:
@@ -80,10 +83,41 @@ def get_last_synced_id():
 def save_last_synced_id(msg_id):
     LAST_ID_FILE.write_text(str(msg_id))
 
+
+def _load_failed_id_counts() -> dict[int, int]:
+    if not FAILED_IDS_FILE.exists():
+        return {}
+    try:
+        data = json.loads(FAILED_IDS_FILE.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            return {}
+        parsed: dict[int, int] = {}
+        for key, value in data.items():
+            try:
+                parsed[int(key)] = int(value)
+            except Exception:
+                continue
+        return parsed
+    except Exception:
+        return {}
+
+
+def _save_failed_id_counts(counts: dict[int, int]):
+    serializable = {str(k): int(v) for k, v in counts.items() if int(v) > 0}
+    FAILED_IDS_FILE.write_text(json.dumps(serializable, ensure_ascii=True, sort_keys=True), encoding="utf-8")
+
+
+def _clear_failed_id(counts: dict[int, int], msg_id: int):
+    if msg_id in counts:
+        counts.pop(msg_id, None)
+        _save_failed_id_counts(counts)
+
 def sync_messages():
     if not _api_reachable():
         print(f"[WATCHDOG] API not reachable at {BASE_URL}. Will retry next cycle.")
         return
+
+    failed_counts = _load_failed_id_counts()
 
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
@@ -114,6 +148,32 @@ def sync_messages():
                 )
                 resp.raise_for_status()
                 save_last_synced_id(msg_id)
+                _clear_failed_id(failed_counts, msg_id)
+            except requests.HTTPError:
+                status_code = resp.status_code if "resp" in locals() else 0
+                response_preview = ""
+                if "resp" in locals():
+                    response_preview = (resp.text or "").strip().replace("\n", " ")[:500]
+
+                failed_counts[msg_id] = failed_counts.get(msg_id, 0) + 1
+                _save_failed_id_counts(failed_counts)
+
+                print(
+                    f"[WATCHDOG] Sync HTTP error on message {msg_id}: status={status_code}, "
+                    f"attempt={failed_counts[msg_id]}/{MAX_RETRIES_PER_MESSAGE}, detail={response_preview or 'n/a'}"
+                )
+
+                if failed_counts[msg_id] >= MAX_RETRIES_PER_MESSAGE:
+                    print(
+                        f"[WATCHDOG] Skipping message {msg_id} after {failed_counts[msg_id]} failed attempts "
+                        "to keep sync progressing."
+                    )
+                    save_last_synced_id(msg_id)
+                    _clear_failed_id(failed_counts, msg_id)
+                    continue
+
+                print("[WATCHDOG] Stopping this cycle to avoid log flood; will retry from last successful ID.")
+                break
             except Exception as e:
                 print(f"[WATCHDOG] Sync error on message {msg_id}: {e}")
                 print("[WATCHDOG] Stopping this cycle to avoid log flood; will retry from last successful ID.")
