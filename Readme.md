@@ -170,6 +170,22 @@ These are example local development measurements to make behavior concrete. Re-r
 ## Positioning
 This project is optimized for a fast, understandable, self-hosted memory workflow. If you want maximum simplicity and direct control over your data path, this sidecar is a strong fit.
 
+## Inspired By gBrain
+This project is inspired by [gBrain](https://github.com/garrytan/gbrain) and follows the same core idea: give AI assistants persistent memory that survives beyond a single chat window.
+
+Thanks to [garrytan/gbrain](https://github.com/garrytan/gbrain) for helping popularize practical long-term memory workflows for AI agents.
+
+## Why This Is Better For Production Multi-User Use Cases
+Compared to the original single-user-focused memory setup, this sidecar adds production-oriented controls that are useful for shared bots, VPS deployments, and team environments:
+
+- **Multi-tenant isolation**: `chat_id` + `scope_id` filtering reduces cross-user memory mixing risk.
+- **Runtime resilience**: OpenRouter retries with graceful degraded behavior instead of hard crashes.
+- **Abuse protection**: Per-endpoint rate limiting on capture/search APIs.
+- **Data hygiene**: startup cleanup removes orphaned embeddings automatically.
+- **Ops ergonomics**: dashboard health/update visibility and straightforward Docker Compose deployment.
+
+If your primary goal is local personal memory experiments, gBrain remains an excellent reference. If your goal is a continuously running, shared memory sidecar for agent platforms, this project is optimized for that path.
+
 ## Tools
 This project provides a robust CLI (`scripts/memory.py`), a drag-and-drop ingest tool, and maintenance utilities:
 
