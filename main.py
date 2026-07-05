@@ -1,4 +1,4 @@
-from fastapi import Body, FastAPI, HTTPException, Depends, status, UploadFile, File
+from fastapi import Body, FastAPI, HTTPException, Depends, status, UploadFile, File, Form
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 import psycopg
@@ -6,7 +6,9 @@ import ollama
 import os
 import threading
 import html
+import json
 import secrets
+import tempfile
 import math
 import shutil
 import whisper
@@ -41,7 +43,7 @@ def get_current_username(credentials: HTTPBasicCredentials = Depends(security)):
 async def url_api_key(request, call_next):
     exempt_paths = [
         "/openapi.json", "/docs", "/docs/swagger-ui.css", "/docs/swagger-ui-bundle.js",
-        "/dashboard", "/delete", "/export", "/transcribe"
+        "/dashboard", "/delete", "/export"
     ]
     if request.url.path in exempt_paths or request.url.path.startswith("/tag_auto/") or request.url.path.startswith("/page_html"):
         return await call_next(request)
@@ -115,12 +117,14 @@ async def capture(text: str | None = None, body: CaptureRequest | None = Body(de
 
 @app.post("/transcribe")
 async def transcribe(file: UploadFile = File(...)):
-    temp_path = f"/tmp/{file.filename}"
-    with open(temp_path, "wb") as buffer:
+    suffix = os.path.splitext(file.filename or "")[1]
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as buffer:
         shutil.copyfileobj(file.file, buffer)
-    
-    result = whisper_model.transcribe(temp_path)
-    os.remove(temp_path)
+        temp_path = buffer.name
+    try:
+        result = whisper_model.transcribe(temp_path)
+    finally:
+        os.remove(temp_path)
     return {"text": result["text"]}
 
 @app.get("/search")
@@ -165,7 +169,7 @@ def rerank(query: str, items: list[dict]) -> list[dict]:
 #  ADMIN & DASHBOARD (PROTECTED)
 # ---------------------------------------------------------
 @app.post("/delete", dependencies=[Depends(get_current_username)])
-async def delete_page(page_id: int):
+async def delete_page(page_id: int = Form(...)):
     with connect_db() as conn:
         with conn.cursor() as cur:
             cur.execute("DELETE FROM pages WHERE id = %s", (page_id,))
