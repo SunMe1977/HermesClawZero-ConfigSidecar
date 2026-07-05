@@ -26,9 +26,15 @@ The **HermesClawZero-ConfigSidecar** is a practical, self-hosted sidecar that ad
 
 Run the setup script for your OS. It verifies dependencies, creates your `.env`, and can optionally set up **Ollama** in Docker.
 
-### 🤖 AI-Agent Installation (Auto-Setup)
-You can install this project automatically using an AI agent (like OpenClaw or Hermes). Simply paste this URL to your agent and say: *"Install this project from GitHub"*:
-`https://github.com/SunMe1977/HermesClawZero-ConfigSidecar`
+### 🤖 Fastest Start (Hermes/OpenClaw)
+Copy and paste this exactly into Hermes or OpenClaw:
+
+```text
+Install this project from GitHub:
+https://github.com/SunMe1977/HermesClawZero-ConfigSidecar
+```
+
+That is enough for most users.
 
 ### Manual Setup
 - **Windows**: Double-click `setup.bat`.

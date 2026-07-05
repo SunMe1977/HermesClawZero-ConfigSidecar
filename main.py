@@ -20,6 +20,7 @@ import uuid
 import subprocess
 import tempfile
 from pathlib import Path
+from collections import defaultdict, deque
 import whisper
 from pydantic import BaseModel
 
@@ -115,6 +116,17 @@ def _load_scope_aliases(raw_json: str) -> dict[str, str]:
 
 SCOPE_ALIASES = _load_scope_aliases(SCOPE_LABELS_JSON)
 
+RATE_LIMIT_RULES = {
+    "/capture": (30, 60),
+    "/search": (60, 60),
+}
+RATE_LIMIT_STATE: dict[tuple[str, str], deque[float]] = defaultdict(deque)
+RATE_LIMIT_LOCK = threading.Lock()
+
+OPENROUTER_MAX_RETRIES = 3
+OPENROUTER_RETRY_BASE_SECONDS = 1.0
+OPENROUTER_DEGRADED_MESSAGE = "OpenRouter temporarily unavailable. Memories are saved but search will be degraded."
+
 # Auth Helpers
 def _build_dashboard_session_token(username: str) -> str:
     issued_at = str(int(time.time()))
@@ -188,6 +200,38 @@ def require_api_key(request: Request):
     if not key or not API_KEY or not secrets.compare_digest(key, API_KEY):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized")
 
+
+def _client_ip(request: Request) -> str:
+    forwarded = request.headers.get("x-forwarded-for", "")
+    if forwarded:
+        first = forwarded.split(",", 1)[0].strip()
+        if first:
+            return first
+    if request.client and request.client.host:
+        return request.client.host
+    return "unknown"
+
+
+def _is_rate_limited(path: str, ip: str, now_ts: float) -> tuple[bool, int]:
+    rule = RATE_LIMIT_RULES.get(path)
+    if not rule:
+        return False, 0
+
+    max_requests, window_seconds = rule
+    key = (path, ip)
+    with RATE_LIMIT_LOCK:
+        bucket = RATE_LIMIT_STATE[key]
+        cutoff = now_ts - window_seconds
+        while bucket and bucket[0] <= cutoff:
+            bucket.popleft()
+
+        if len(bucket) >= max_requests:
+            retry_after = max(1, int(window_seconds - (now_ts - bucket[0])))
+            return True, retry_after
+
+        bucket.append(now_ts)
+    return False, 0
+
 @app.middleware("http")
 async def url_api_key(request, call_next):
     path = request.url.path
@@ -215,6 +259,19 @@ async def url_api_key(request, call_next):
     key = request.headers.get("x-api-key") or request.query_params.get("key")
     if key != API_KEY:
         return HTMLResponse("Unauthorized", status_code=401)
+    return await call_next(request)
+
+
+@app.middleware("http")
+async def rate_limit_middleware(request: Request, call_next):
+    path = request.url.path.rstrip("/") or "/"
+    limited, retry_after = _is_rate_limited(path, _client_ip(request), time.time())
+    if limited:
+        return JSONResponse(
+            {"detail": "Rate limit exceeded"},
+            status_code=429,
+            headers={"Retry-After": str(retry_after)},
+        )
     return await call_next(request)
 
 
@@ -336,6 +393,45 @@ def _raise_embedding_upstream_error(provider: str, response: requests.Response) 
     raise HTTPException(status_code=502, detail=f"{provider} embedding upstream error.")
 
 
+def _openrouter_embeddings_request(payload: dict, timeout_seconds: int) -> dict:
+    last_error: str | None = None
+    for attempt in range(1, OPENROUTER_MAX_RETRIES + 1):
+        try:
+            response = requests.post(
+                "https://openrouter.ai/api/v1/embeddings",
+                headers={
+                    "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+                timeout=timeout_seconds,
+            )
+
+            if response.status_code < 400:
+                return response.json()
+
+            if response.status_code == 429:
+                print(f"[OPENROUTER] rate-limited on attempt {attempt}/{OPENROUTER_MAX_RETRIES}")
+
+            if response.status_code in {429, 500, 502, 503, 504}:
+                last_error = f"status={response.status_code}"
+                if attempt < OPENROUTER_MAX_RETRIES:
+                    time.sleep(OPENROUTER_RETRY_BASE_SECONDS * (2 ** (attempt - 1)))
+                    continue
+                raise HTTPException(status_code=503, detail=OPENROUTER_DEGRADED_MESSAGE)
+
+            _raise_embedding_upstream_error("OpenRouter", response)
+        except requests.RequestException as ex:
+            last_error = str(ex)
+            if attempt < OPENROUTER_MAX_RETRIES:
+                time.sleep(OPENROUTER_RETRY_BASE_SECONDS * (2 ** (attempt - 1)))
+                continue
+            break
+
+    print(f"[OPENROUTER] embedding retries exhausted: {last_error or 'unknown error'}")
+    raise HTTPException(status_code=503, detail=OPENROUTER_DEGRADED_MESSAGE)
+
+
 def generate_embedding(text: str) -> list[float]:
     provider = resolve_embedding_provider()
     if provider == "ollama":
@@ -362,18 +458,10 @@ def generate_embedding(text: str) -> list[float]:
     if provider == "openrouter":
         if not OPENROUTER_API_KEY:
             raise HTTPException(status_code=500, detail="OPENROUTER_API_KEY is required when AI_PROVIDER=openrouter")
-        response = requests.post(
-            "https://openrouter.ai/api/v1/embeddings",
-            headers={
-                "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-                "Content-Type": "application/json",
-            },
-            json={"model": OPENROUTER_EMBED_MODEL, "input": text},
-            timeout=45,
+        data = _openrouter_embeddings_request(
+            payload={"model": OPENROUTER_EMBED_MODEL, "input": text},
+            timeout_seconds=45,
         )
-        if response.status_code >= 400:
-            _raise_embedding_upstream_error("OpenRouter", response)
-        data = response.json()
         return data["data"][0]["embedding"]
 
     if provider == "gemini":
@@ -430,18 +518,11 @@ def generate_embeddings(texts: list[str]) -> list[list[float]]:
     if provider == "openrouter":
         if not OPENROUTER_API_KEY:
             raise HTTPException(status_code=500, detail="OPENROUTER_API_KEY is required when AI_PROVIDER=openrouter")
-        response = requests.post(
-            "https://openrouter.ai/api/v1/embeddings",
-            headers={
-                "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-                "Content-Type": "application/json",
-            },
-            json={"model": OPENROUTER_EMBED_MODEL, "input": texts},
-            timeout=90,
+        response_payload = _openrouter_embeddings_request(
+            payload={"model": OPENROUTER_EMBED_MODEL, "input": texts},
+            timeout_seconds=90,
         )
-        if response.status_code >= 400:
-            _raise_embedding_upstream_error("OpenRouter", response)
-        data = response.json().get("data", [])
+        data = response_payload.get("data", [])
         data_sorted = sorted(data, key=lambda d: d.get("index", 0))
         return [d["embedding"] for d in data_sorted]
 
@@ -1468,13 +1549,23 @@ async def capture(
             with conn.cursor() as cur:
                 cur.execute("INSERT INTO embeddings (page_id, embedding) VALUES (%s, %s::vector)", (page_id, emb_str))
                 conn.commit()
-    except HTTPException:
+    except HTTPException as ex:
+        if ex.status_code == 503 and ex.detail == OPENROUTER_DEGRADED_MESSAGE:
+            return {
+                "status": "ok_degraded",
+                "page_id": page_id,
+                "memory_type": meta["memory_type"],
+                "score": meta["score"],
+                "importance": round(meta["importance"], 3),
+                "confidence": round(meta["confidence"], 3),
+                "warning": OPENROUTER_DEGRADED_MESSAGE,
+            }
         # Roll back page-only inserts so failed embeddings do not create orphan records.
         with connect_db() as conn:
             with conn.cursor() as cur:
                 cur.execute("DELETE FROM pages WHERE id = %s", (page_id,))
                 conn.commit()
-        raise
+        raise ex
     except Exception as ex:
         with connect_db() as conn:
             with conn.cursor() as cur:
@@ -1662,29 +1753,41 @@ async def search(
             for r in rows
         ]
     
-    qemb = generate_embedding(query)
-    qemb_str = embedding_to_pgvector_literal(qemb)
+    qemb_str = None
+    degraded_search = False
+    degraded_reason = None
+    try:
+        qemb = generate_embedding(query)
+        qemb_str = embedding_to_pgvector_literal(qemb)
+    except HTTPException as ex:
+        if ex.status_code == 503 and ex.detail == OPENROUTER_DEGRADED_MESSAGE:
+            degraded_search = True
+            degraded_reason = OPENROUTER_DEGRADED_MESSAGE
+        else:
+            raise
 
     candidates: dict[int, dict] = {}
 
     with connect_db() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                """
-                SELECT p.id, p.content, p.memory_type, p.importance, p.confidence, p.frequency,
-                       EXTRACT(EPOCH FROM (NOW() - COALESCE(p.last_retrieved, p.last_used, p.created_at))) / 86400.0 AS age_days,
-                       e.embedding <-> %s::vector AS vector_distance
-                FROM embeddings e
-                JOIN pages p ON p.id = e.page_id
-                WHERE p.is_archived = FALSE
-                                        AND p.chat_id = %s
-                    AND (%s IS NULL OR p.scope_id = %s)
-                ORDER BY vector_distance
-                LIMIT %s
-                """,
-                                    (qemb_str, search_chat_id, search_scope_id, search_scope_id, limit * 2),
-            )
-            vector_rows = cur.fetchall()
+            vector_rows = []
+            if qemb_str is not None:
+                cur.execute(
+                    """
+                    SELECT p.id, p.content, p.memory_type, p.importance, p.confidence, p.frequency,
+                           EXTRACT(EPOCH FROM (NOW() - COALESCE(p.last_retrieved, p.last_used, p.created_at))) / 86400.0 AS age_days,
+                           e.embedding <-> %s::vector AS vector_distance
+                    FROM embeddings e
+                    JOIN pages p ON p.id = e.page_id
+                    WHERE p.is_archived = FALSE
+                                            AND p.chat_id = %s
+                        AND (%s IS NULL OR p.scope_id = %s)
+                    ORDER BY vector_distance
+                    LIMIT %s
+                    """,
+                    (qemb_str, search_chat_id, search_scope_id, search_scope_id, limit * 2),
+                )
+                vector_rows = cur.fetchall()
 
             cur.execute(
                 """
@@ -1768,6 +1871,8 @@ async def search(
             "lexical_rank": r.get("lexical_rank"),
             "age_days": round(float(r.get("age_days") or 0.0), 2),
             "explainability": r["explainability"],
+            "degraded": degraded_search,
+            "degraded_reason": degraded_reason,
         }
         for r in results[:limit]
     ]
