@@ -11,3 +11,5 @@ memory_sync.pid
 # OS
 .DS_Store
 Thumbs.db
+
+raw

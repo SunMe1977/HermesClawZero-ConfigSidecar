@@ -8,7 +8,7 @@ from pydantic import BaseModel
 
 app = FastAPI()
 
-API_KEY = os.getenv("API_KEY", "change_me_in_env")
+API_KEY = os.getenv("OPENCLAW_KEY", "change_me_in_env")
 
 
 class CaptureRequest(BaseModel):

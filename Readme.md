@@ -1,3 +1,5 @@
+![Logo](images/logo.webp "HermesClaw Zero‑Config Sidecar")
+
 ```text
     __  __                                  ________                
    / / / /__  _________ ___  ___  _____    / ____/ /___ _      ______

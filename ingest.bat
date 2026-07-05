@@ -1,17 +1,17 @@
 @echo off
-:: Ingest a file into the HermesClawZero sync directory
-:: Drop a file onto this script to ingest it into your memory system.
+:: Ingest a file into the HermesClawZero inbox
+:: Drop a file onto this script to put it into your brain's inbox.
 
-set SYNC_DIR=.\sync
-if not exist "%SYNC_DIR%" mkdir "%SYNC_DIR%"
+set INBOX_DIR=.\inbox
+if not exist "%INBOX_DIR%" mkdir "%INBOX_DIR%"
 
 if "%~1"=="" goto :usage
 
-echo Copying %~1 to %SYNC_DIR%...
-copy "%~1" "%SYNC_DIR%\"
+echo Moving %~1 to %INBOX_DIR%...
+move "%~1" "%INBOX_DIR%\"
 echo.
-echo Success: %~n1%~x1 has been moved to the sync folder.
-echo The watchdog will ingest it shortly.
+echo Success: %~n1%~x1 has been moved to the inbox.
+echo The watchdog will process it shortly.
 echo.
 pause
 goto :eof

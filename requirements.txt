@@ -4,3 +4,4 @@ psycopg[binary]
 ollama
 requests
 psutil
+python-dotenv
