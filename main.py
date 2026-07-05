@@ -105,22 +105,43 @@ async def capture(text: str | None = None, body: CaptureRequest | None = Body(de
             conn.commit()
     return {"status": "ok", "page_id": page_id}
 
+def rerank(query: str, items: list[dict]) -> list[dict]:
+    if not items: return items
+    prompt = f"Query: {query}\n\nRe-rank these items by relevance (0-10 score), return JSON: [{{'id': id, 'score': score}}]\n"
+    for item in items:
+        prompt += f"ID: {item['id']}, Content: {item['content'][:200]}\n"
+    
+    resp = client.generate(model="llama3.1:8b", prompt=prompt)
+    try:
+        ranked = json.loads(resp['response'])
+        ranked.sort(key=lambda x: x['score'], reverse=True)
+        id_map = {r['id']: r for r in items}
+        return [id_map[r['id']] for r in ranked if r['id'] in id_map]
+    except:
+        return items
+
 @app.get("/search")
-async def search(query: str = "", limit: int = 5):
+async def search(query: str = "", limit: int = 5, rerank_results: bool = False):
     if query.strip() == "":
         with connect_db() as conn:
             with conn.cursor() as cur:
                 cur.execute("SELECT id, content FROM pages ORDER BY id DESC LIMIT %s", (limit,))
                 rows = cur.fetchall()
         return [{"id": r[0], "content": r[1]} for r in rows]
+    
     resp = client.embeddings(model="nomic-embed-text", prompt=query)
     qemb = resp["embedding"]
     qemb_str = embedding_to_pgvector_literal(qemb)
     with connect_db() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT p.id, p.content FROM embeddings e JOIN pages p ON p.id = e.page_id ORDER BY e.embedding <-> %s::vector LIMIT %s", (qemb_str, limit))
+            cur.execute("SELECT p.id, p.content FROM embeddings e JOIN pages p ON p.id = e.page_id ORDER BY e.embedding <-> %s::vector LIMIT %s", (qemb_str, limit * 2))
             rows = cur.fetchall()
-    return [{"id": r[0], "content": r[1]} for r in rows]
+    
+    results = [{"id": r[0], "content": r[1]} for r in rows]
+    if rerank_results:
+        results = rerank(query, results)
+    
+    return results[:limit]
 
 # ---------------------------------------------------------
 #  ADMIN & DASHBOARD (PROTECTED)
