@@ -88,6 +88,31 @@ WATCHDOG_STATUS = {
     "updated_at": None,
 }
 
+DASHBOARD_SCOPE_ALL = "all"
+DASHBOARD_SCOPE_UNSCOPED = "__unscoped__"
+SCOPE_LABELS_JSON = (os.getenv("SCOPE_LABELS_JSON", "") or "").strip()
+
+
+def _load_scope_aliases(raw_json: str) -> dict[str, str]:
+    if not raw_json:
+        return {}
+    try:
+        parsed = json.loads(raw_json)
+        if not isinstance(parsed, dict):
+            return {}
+        aliases: dict[str, str] = {}
+        for key, value in parsed.items():
+            key_str = str(key).strip()
+            value_str = str(value).strip()
+            if key_str and value_str:
+                aliases[key_str[:200]] = value_str[:120]
+        return aliases
+    except Exception:
+        return {}
+
+
+SCOPE_ALIASES = _load_scope_aliases(SCOPE_LABELS_JSON)
+
 # Auth Helpers
 def _build_dashboard_session_token(username: str) -> str:
     issued_at = str(int(time.time()))
@@ -618,6 +643,44 @@ def normalize_scope_id(value: str | None) -> str | None:
     return normalized[:200]
 
 
+def build_scope_filter(selected_scope: str | None, column_name: str = "scope_id") -> tuple[str, list]:
+    raw = (selected_scope or "").strip()
+    if not raw or raw == DASHBOARD_SCOPE_ALL:
+        return "", []
+    if raw == DASHBOARD_SCOPE_UNSCOPED:
+        return f" AND {column_name} IS NULL", []
+
+    normalized = normalize_scope_id(raw)
+    if normalized is None:
+        return "", []
+    return f" AND {column_name} = %s", [normalized]
+
+
+def format_scope_label(scope_id: str, count: int | None = None) -> str:
+    clean_scope = normalize_scope_id(scope_id) or scope_id
+    alias = SCOPE_ALIASES.get(clean_scope)
+    suffix = f" ({count})" if count is not None else ""
+
+    prefix = clean_scope
+    local_id = None
+    if ":" in clean_scope:
+        prefix, local_id = clean_scope.split(":", 1)
+
+    prefix_lower = prefix.strip().lower()
+    if alias:
+        return f"{alias} [{clean_scope}]{suffix}"
+
+    if local_id:
+        id_part = local_id.strip()
+        if prefix_lower in {"telegram", "tg"}:
+            return f"Telegram chat {id_part}{suffix}"
+        if prefix_lower in {"openclaw", "hermes"}:
+            return f"{prefix.capitalize()} user {id_part}{suffix}"
+        return f"{prefix} {id_part}{suffix}"
+
+    return f"{clean_scope}{suffix}"
+
+
 def normalize_lexical_rank(rank: float | None) -> float:
     if rank is None:
         return 0.0
@@ -807,11 +870,17 @@ def run_decay_and_archive_once() -> dict:
     }
 
 
-def get_optimizer_review(limit: int = 25, stale_days: int = 14, confidence_threshold: float = 0.3) -> dict:
+def get_optimizer_review(
+    limit: int = 25,
+    stale_days: int = 14,
+    confidence_threshold: float = 0.3,
+    selected_scope: str | None = None,
+) -> dict:
+    scope_clause, scope_params = build_scope_filter(selected_scope, "p.scope_id")
     with connect_db() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                """
+                f"""
                 SELECT
                     p.id,
                     p.content,
@@ -829,6 +898,7 @@ def get_optimizer_review(limit: int = 25, stale_days: int = 14, confidence_thres
                     END AS review_reason
                 FROM pages p
                 WHERE p.is_archived = FALSE
+                                    {scope_clause}
                   AND (
                         p.confidence < %s
                         OR COALESCE(p.last_used, p.created_at) < NOW() - (%s || ' days')::interval
@@ -837,7 +907,7 @@ def get_optimizer_review(limit: int = 25, stale_days: int = 14, confidence_thres
                 ORDER BY p.confidence ASC, age_days DESC
                 LIMIT %s
                 """,
-                (confidence_threshold, stale_days, confidence_threshold, stale_days, limit),
+                                tuple(scope_params) + (confidence_threshold, stale_days, confidence_threshold, stale_days, limit),
             )
             pending_rows = cur.fetchall()
 
@@ -906,96 +976,107 @@ def get_optimizer_review(limit: int = 25, stale_days: int = 14, confidence_thres
     }
 
 
-def get_optimizer_dry_run(stale_days: int = 14, confidence_threshold: float = 0.3, limit: int = 25) -> dict:
-        with connect_db() as conn:
-                with conn.cursor() as cur:
-                        cur.execute(
-                                """
-                                SELECT COUNT(*)
-                                FROM pages
-                                WHERE is_archived = FALSE
-                                    AND last_used < NOW() - INTERVAL '7 days'
-                                """
-                        )
-                        would_decay_count = int(cur.fetchone()[0])
+def get_optimizer_dry_run(
+    stale_days: int = 14,
+    confidence_threshold: float = 0.3,
+    limit: int = 25,
+    selected_scope: str | None = None,
+) -> dict:
+    scope_clause, scope_params = build_scope_filter(selected_scope, "scope_id")
+    with connect_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT COUNT(*)
+                FROM pages
+                WHERE is_archived = FALSE
+                    {scope_clause}
+                    AND last_used < NOW() - INTERVAL '7 days'
+                """,
+                tuple(scope_params),
+            )
+            would_decay_count = int(cur.fetchone()[0])
 
-                        cur.execute(
-                                """
-                                SELECT COUNT(*)
-                                FROM pages
-                                WHERE is_archived = FALSE
-                                    AND (
-                                        (ttl_days IS NOT NULL AND created_at + (ttl_days || ' days')::interval < NOW())
-                                        OR confidence < 0.18
-                                    )
-                                """
-                        )
-                        would_archive_count = int(cur.fetchone()[0])
+            cur.execute(
+                f"""
+                SELECT COUNT(*)
+                FROM pages
+                WHERE is_archived = FALSE
+                    {scope_clause}
+                    AND (
+                    (ttl_days IS NOT NULL AND created_at + (ttl_days || ' days')::interval < NOW())
+                    OR confidence < 0.18
+                    )
+                """,
+                tuple(scope_params),
+            )
+            would_archive_count = int(cur.fetchone()[0])
 
-                        cur.execute(
-                                """
-                                SELECT
-                                        id,
-                                        content,
-                                        memory_type,
-                                        importance,
-                                        confidence,
-                                        frequency,
-                                        ROUND(EXTRACT(EPOCH FROM (NOW() - COALESCE(last_used, created_at))) / 86400.0, 2) AS age_days,
-                                        CASE
-                                            WHEN ttl_days IS NOT NULL AND created_at + (ttl_days || ' days')::interval < NOW() THEN 'ttl_expired'
-                                            WHEN confidence < 0.18 THEN 'low_confidence'
-                                            WHEN last_used < NOW() - INTERVAL '7 days' THEN 'stale_decay_candidate'
-                                            ELSE 'review_candidate'
-                                        END AS dry_run_reason
-                                FROM pages
-                                WHERE is_archived = FALSE
-                                    AND (
-                                        (ttl_days IS NOT NULL AND created_at + (ttl_days || ' days')::interval < NOW())
-                                        OR confidence < 0.18
-                                        OR last_used < NOW() - INTERVAL '7 days'
-                                        OR confidence < %s
-                                        OR COALESCE(last_used, created_at) < NOW() - (%s || ' days')::interval
-                                    )
-                                ORDER BY
-                                        CASE
-                                            WHEN ttl_days IS NOT NULL AND created_at + (ttl_days || ' days')::interval < NOW() THEN 0
-                                            WHEN confidence < 0.18 THEN 1
-                                            WHEN last_used < NOW() - INTERVAL '7 days' THEN 2
-                                            ELSE 3
-                                        END,
-                                        confidence ASC,
-                                        age_days DESC
-                                LIMIT %s
-                                """,
-                                (confidence_threshold, stale_days, limit),
-                        )
-                        sample_rows = cur.fetchall()
+            cur.execute(
+                f"""
+                SELECT
+                    id,
+                    content,
+                    memory_type,
+                    importance,
+                    confidence,
+                    frequency,
+                    ROUND(EXTRACT(EPOCH FROM (NOW() - COALESCE(last_used, created_at))) / 86400.0, 2) AS age_days,
+                    CASE
+                        WHEN ttl_days IS NOT NULL AND created_at + (ttl_days || ' days')::interval < NOW() THEN 'ttl_expired'
+                        WHEN confidence < 0.18 THEN 'low_confidence'
+                        WHEN last_used < NOW() - INTERVAL '7 days' THEN 'stale_decay_candidate'
+                        ELSE 'review_candidate'
+                    END AS dry_run_reason
+                FROM pages
+                WHERE is_archived = FALSE
+                    {scope_clause}
+                    AND (
+                    (ttl_days IS NOT NULL AND created_at + (ttl_days || ' days')::interval < NOW())
+                    OR confidence < 0.18
+                    OR last_used < NOW() - INTERVAL '7 days'
+                    OR confidence < %s
+                    OR COALESCE(last_used, created_at) < NOW() - (%s || ' days')::interval
+                    )
+                ORDER BY
+                    CASE
+                        WHEN ttl_days IS NOT NULL AND created_at + (ttl_days || ' days')::interval < NOW() THEN 0
+                        WHEN confidence < 0.18 THEN 1
+                        WHEN last_used < NOW() - INTERVAL '7 days' THEN 2
+                        ELSE 3
+                    END,
+                    confidence ASC,
+                    age_days DESC
+                LIMIT %s
+                """,
+                tuple(scope_params) + (confidence_threshold, stale_days, limit),
+            )
+            sample_rows = cur.fetchall()
 
-        sample = [
-                {
-                        "id": r[0],
-                        "content": r[1],
-                        "memory_type": r[2],
-                        "importance": r[3],
-                        "confidence": r[4],
-                        "frequency": r[5],
-                        "age_days": float(r[6] or 0.0),
-                        "dry_run_reason": r[7],
-                }
-                for r in sample_rows
-        ]
-
-        return {
-                "thresholds": {
-                        "stale_days": stale_days,
-                        "confidence_threshold": confidence_threshold,
-                        "limit": limit,
-                },
-                "would_decay_count": would_decay_count,
-                "would_archive_count": would_archive_count,
-                "sample": sample,
+    sample = [
+        {
+            "id": r[0],
+            "content": r[1],
+            "memory_type": r[2],
+            "importance": r[3],
+            "confidence": r[4],
+            "frequency": r[5],
+            "age_days": float(r[6] or 0.0),
+            "dry_run_reason": r[7],
         }
+        for r in sample_rows
+    ]
+
+    return {
+        "thresholds": {
+            "stale_days": stale_days,
+            "confidence_threshold": confidence_threshold,
+            "limit": limit,
+        },
+        "would_decay_count": would_decay_count,
+        "would_archive_count": would_archive_count,
+        "sample": sample,
+    }
 
 
 def archive_selected_pages(page_ids: list[int], archive_reason: str = "manual_review", archive_batch_id: str | None = None) -> dict:
@@ -1709,6 +1790,7 @@ async def view_page_html(page_id: int):
 @app.get("/dashboard", response_class=HTMLResponse, dependencies=[Depends(get_current_username)])
 async def dashboard(
     query: str | None = None,
+    selected_scope: str = DASHBOARD_SCOPE_ALL,
     page: int = 1,
     optimizer_msg: str | None = None,
     dry_run_msg: str | None = None,
@@ -1722,6 +1804,12 @@ async def dashboard(
     safe_health_stale_days = max(1, min(health_stale_days, 3650))
     safe_health_confidence = clamp(health_confidence_threshold, 0.0, 1.0)
     safe_health_limit = max(1, min(health_limit, 50))
+    active_scope = (selected_scope or DASHBOARD_SCOPE_ALL).strip() or DASHBOARD_SCOPE_ALL
+    if active_scope != DASHBOARD_SCOPE_UNSCOPED:
+        normalized_scope = normalize_scope_id(active_scope)
+        active_scope = normalized_scope if normalized_scope is not None else DASHBOARD_SCOPE_ALL
+
+    list_scope_clause, list_scope_params = build_scope_filter(active_scope, "scope_id")
     try:
         # Keep dashboard resilient even if a deployment has stale schema.
         ensure_phase1_schema()
@@ -1730,11 +1818,13 @@ async def dashboard(
             limit=safe_health_limit,
             stale_days=safe_health_stale_days,
             confidence_threshold=safe_health_confidence,
+            selected_scope=active_scope,
         )
         dry_run = get_optimizer_dry_run(
             limit=safe_health_limit,
             stale_days=safe_health_stale_days,
             confidence_threshold=safe_health_confidence,
+            selected_scope=active_scope,
         )
         latest_manual_batch_id = get_latest_manual_archive_batch_id()
         version_info = get_version_info()
@@ -1742,15 +1832,39 @@ async def dashboard(
 
         with connect_db() as conn:
             with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT scope_id, COUNT(*)
+                    FROM pages
+                    WHERE scope_id IS NOT NULL
+                    GROUP BY scope_id
+                    ORDER BY COUNT(*) DESC, scope_id ASC
+                    LIMIT 200
+                    """
+                )
+                scope_rows = cur.fetchall()
+
                 if query:
-                    cur.execute("SELECT id, content FROM pages WHERE content ILIKE %s ORDER BY id DESC LIMIT %s OFFSET %s", (f"%{query}%", per_page, offset))
+                    cur.execute(
+                        f"SELECT id, content FROM pages WHERE content ILIKE %s{list_scope_clause} ORDER BY id DESC LIMIT %s OFFSET %s",
+                        tuple([f"%{query}%"] + list_scope_params + [per_page, offset]),
+                    )
                     rows = cur.fetchall()
-                    cur.execute("SELECT COUNT(*) FROM pages WHERE content ILIKE %s", (f"%{query}%",))
+                    cur.execute(
+                        f"SELECT COUNT(*) FROM pages WHERE content ILIKE %s{list_scope_clause}",
+                        tuple([f"%{query}%"] + list_scope_params),
+                    )
                     total_items = cur.fetchone()[0]
                 else:
-                    cur.execute("SELECT id, content FROM pages ORDER BY id DESC LIMIT %s OFFSET %s", (per_page, offset))
+                    cur.execute(
+                        f"SELECT id, content FROM pages WHERE 1=1{list_scope_clause} ORDER BY id DESC LIMIT %s OFFSET %s",
+                        tuple(list_scope_params + [per_page, offset]),
+                    )
                     rows = cur.fetchall()
-                    cur.execute("SELECT COUNT(*) FROM pages")
+                    cur.execute(
+                        f"SELECT COUNT(*) FROM pages WHERE 1=1{list_scope_clause}",
+                        tuple(list_scope_params),
+                    )
                     total_items = cur.fetchone()[0]
     except Exception as ex:
         return HTMLResponse(
@@ -1812,12 +1926,31 @@ async def dashboard(
             )
 
     total_pages = math.ceil(total_items / per_page)
+
+    scope_options = [
+        (DASHBOARD_SCOPE_ALL, "All users/scopes"),
+        (DASHBOARD_SCOPE_UNSCOPED, "Unscoped (legacy rows)"),
+    ]
+    for scope_id, count in scope_rows:
+        scope_options.append((scope_id, format_scope_label(str(scope_id), int(count))))
+
+    if active_scope not in {opt[0] for opt in scope_options}:
+        scope_options.append((active_scope, f"{format_scope_label(active_scope)} (selected)"))
+
+    scope_select_html = ""
+    for option_value, option_label in scope_options:
+        selected_attr = " selected" if option_value == active_scope else ""
+        scope_select_html += (
+            f"<option value='{html.escape(str(option_value))}'{selected_attr}>"
+            f"{html.escape(option_label)}"
+            "</option>"
+        )
     
     items = ""
     for r in rows:
         items += f"""
         <li style="margin-bottom: 12px; background: #2a2a2a; padding: 10px; border-radius: 6px; border: 1px solid #444;">
-            <a href='/page_html?page_id={r[0]}' style="color: #4da6ff; text-decoration: none;">[{r[0]}]</a> 
+            <a href='/page_html?page_id={r[0]}' style="color: #4da6ff; text-decoration: none;">[{r[0]}]</a>
             <span style="color: #ddd;">{html.escape(r[1][:80])}</span>
             <form action='/delete' method='post' style='display:inline; float:right;'>
                 <input type='hidden' name='page_id' value='{r[0]}'>
@@ -1828,11 +1961,11 @@ async def dashboard(
             </form>
         </li>
         """
-    
+
     nav = ""
     for i in range(1, total_pages + 1):
         active = "background: #4da6ff;" if i == page else "background: #333;"
-        nav += f'<a href="/dashboard?page={i}&query={html.escape(query or "")}" style="margin: 0 5px; padding: 5px 10px; color: white; text-decoration: none; border-radius: 4px; {active}">{i}</a>'
+        nav += f'<a href="/dashboard?page={i}&query={html.escape(query or "")}&selected_scope={quote_plus(active_scope)}&health_stale_days={safe_health_stale_days}&health_confidence_threshold={safe_health_confidence:.2f}&health_limit={safe_health_limit}" style="margin: 0 5px; padding: 5px 10px; color: white; text-decoration: none; border-radius: 4px; {active}">{i}</a>'
 
     pending_items = ""
     for item in review["pending_review"][:safe_health_limit]:
@@ -1902,6 +2035,13 @@ async def dashboard(
             {restore_banner}
         <form method="get" action="/dashboard">
           <input type="text" name="query" placeholder="Suche..." value="{html.escape(query or "")}">
+                    <select name="selected_scope" style="margin-left:8px; padding:8px; border-radius:4px; border:1px solid #444; background:#1e1e1e; color:white; width:320px; max-width:100%;">
+                        {scope_select_html}
+                    </select>
+                                        <span style="margin-left:8px; color:#9ca3af; font-size:0.85rem;">For real names set SCOPE_LABELS_JSON in .env.</span>
+                    <input type="hidden" name="health_stale_days" value="{safe_health_stale_days}">
+                    <input type="hidden" name="health_confidence_threshold" value="{safe_health_confidence:.2f}">
+                    <input type="hidden" name="health_limit" value="{safe_health_limit}">
           <button type="submit">Search</button>
         </form>
 
@@ -1915,6 +2055,7 @@ async def dashboard(
 
                     <form method="post" action="/update/run_from_dashboard" style="margin: 10px 0;">
                         <input type="hidden" name="query" value="{html.escape(query or '')}">
+                        <input type="hidden" name="selected_scope" value="{html.escape(active_scope)}">
                         <input type="hidden" name="page" value="{page}">
                         <input type="hidden" name="health_stale_days" value="{safe_health_stale_days}">
                         <input type="hidden" name="health_confidence_threshold" value="{safe_health_confidence}">
@@ -1931,6 +2072,7 @@ async def dashboard(
                         <form method="get" action="/dashboard" style="margin: 10px 0; display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
                             <input type="hidden" name="page" value="{page}">
                             <input type="hidden" name="query" value="{html.escape(query or '')}">
+                            <input type="hidden" name="selected_scope" value="{html.escape(active_scope)}">
                             <label style="font-size:0.9rem;">Stale days:
                                 <input type="number" min="1" max="3650" name="health_stale_days" value="{safe_health_stale_days}" style="width:90px; margin-left:6px;">
                             </label>
@@ -1945,6 +2087,7 @@ async def dashboard(
 
                     <form method="post" action="/optimizer/run_from_dashboard" style="margin: 10px 0;">
                             <input type="hidden" name="query" value="{html.escape(query or '')}">
+                            <input type="hidden" name="selected_scope" value="{html.escape(active_scope)}">
                             <input type="hidden" name="page" value="{page}">
                             <input type="hidden" name="health_stale_days" value="{safe_health_stale_days}">
                             <input type="hidden" name="health_confidence_threshold" value="{safe_health_confidence}">
@@ -1954,6 +2097,7 @@ async def dashboard(
 
                     <form method="post" action="/optimizer/dry_run_from_dashboard" style="margin: 10px 0;">
                         <input type="hidden" name="query" value="{html.escape(query or '')}">
+                        <input type="hidden" name="selected_scope" value="{html.escape(active_scope)}">
                         <input type="hidden" name="page" value="{page}">
                         <input type="hidden" name="health_stale_days" value="{safe_health_stale_days}">
                         <input type="hidden" name="health_confidence_threshold" value="{safe_health_confidence}">
@@ -1963,6 +2107,7 @@ async def dashboard(
 
                     <form method="post" action="/optimizer/undo_latest_manual_archive_from_dashboard" style="margin: 10px 0;">
                         <input type="hidden" name="query" value="{html.escape(query or '')}">
+                        <input type="hidden" name="selected_scope" value="{html.escape(active_scope)}">
                         <input type="hidden" name="page" value="{page}">
                         <input type="hidden" name="health_stale_days" value="{safe_health_stale_days}">
                         <input type="hidden" name="health_confidence_threshold" value="{safe_health_confidence}">
@@ -1972,7 +2117,7 @@ async def dashboard(
                     <p style="margin:4px 0; color:#b5c4df; font-size:0.9rem;">Latest manual batch: {html.escape(latest_manual_batch_id or 'none')}</p>
 
                         <p style="margin:8px 0;">
-                            <a style="color:#9ec8ff;" href="/optimizer/review?limit={safe_health_limit}&stale_days={safe_health_stale_days}&confidence_threshold={safe_health_confidence:.2f}">Open Raw Review JSON</a>
+                            <a style="color:#9ec8ff;" href="/optimizer/review?limit={safe_health_limit}&stale_days={safe_health_stale_days}&confidence_threshold={safe_health_confidence:.2f}&selected_scope={quote_plus(active_scope)}">Open Raw Review JSON</a>
                         </p>
 
                     <div style="display:flex; gap:16px; flex-wrap:wrap;">
@@ -1980,6 +2125,7 @@ async def dashboard(
                             <h3 style="margin:8px 0;">Pending Review</h3>
                             <form method="post" action="/optimizer/archive_selected_from_dashboard" style="margin:0;">
                                 <input type="hidden" name="query" value="{html.escape(query or '')}">
+                                <input type="hidden" name="selected_scope" value="{html.escape(active_scope)}">
                                 <input type="hidden" name="page" value="{page}">
                                 <input type="hidden" name="health_stale_days" value="{safe_health_stale_days}">
                                 <input type="hidden" name="health_confidence_threshold" value="{safe_health_confidence}">
@@ -2065,6 +2211,7 @@ async def update_run():
 @app.post("/update/run_from_dashboard", dependencies=[Depends(get_current_username)])
 async def update_run_from_dashboard(
     query: str = Form(""),
+    selected_scope: str = Form(DASHBOARD_SCOPE_ALL),
     page: int = Form(1),
     health_stale_days: int = Form(14),
     health_confidence_threshold: float = Form(0.3),
@@ -2084,6 +2231,7 @@ async def update_run_from_dashboard(
             f"/dashboard?optimizer_msg={quote_plus(msg)}"
             f"&page={safe_page}"
             f"&query={quote_plus(query or '')}"
+            f"&selected_scope={quote_plus((selected_scope or DASHBOARD_SCOPE_ALL).strip() or DASHBOARD_SCOPE_ALL)}"
             f"&health_stale_days={safe_stale_days}"
             f"&health_confidence_threshold={safe_confidence:.2f}"
             f"&health_limit={safe_limit}"
@@ -2110,6 +2258,7 @@ async def optimizer_undo_latest_manual_archive():
 @app.post("/optimizer/run_from_dashboard", dependencies=[Depends(get_current_username)])
 async def run_optimizer_from_dashboard(
     query: str = Form(""),
+    selected_scope: str = Form(DASHBOARD_SCOPE_ALL),
     page: int = Form(1),
     health_stale_days: int = Form(14),
     health_confidence_threshold: float = Form(0.3),
@@ -2126,6 +2275,7 @@ async def run_optimizer_from_dashboard(
             f"/dashboard?optimizer_msg={quote_plus(message)}"
             f"&page={safe_page}"
             f"&query={quote_plus(query or '')}"
+            f"&selected_scope={quote_plus((selected_scope or DASHBOARD_SCOPE_ALL).strip() or DASHBOARD_SCOPE_ALL)}"
             f"&health_stale_days={safe_stale_days}"
             f"&health_confidence_threshold={safe_confidence:.2f}"
             f"&health_limit={safe_limit}"
@@ -2135,7 +2285,12 @@ async def run_optimizer_from_dashboard(
 
 
 @app.get("/optimizer/dry_run", dependencies=[Depends(get_current_username)])
-async def optimizer_dry_run(limit: int = 25, stale_days: int = 14, confidence_threshold: float = 0.3):
+async def optimizer_dry_run(
+    limit: int = 25,
+    stale_days: int = 14,
+    confidence_threshold: float = 0.3,
+    selected_scope: str = DASHBOARD_SCOPE_ALL,
+):
     safe_limit = max(1, min(limit, 200))
     safe_stale_days = max(1, min(stale_days, 3650))
     safe_confidence = clamp(confidence_threshold, 0.0, 1.0)
@@ -2143,6 +2298,7 @@ async def optimizer_dry_run(limit: int = 25, stale_days: int = 14, confidence_th
         limit=safe_limit,
         stale_days=safe_stale_days,
         confidence_threshold=safe_confidence,
+        selected_scope=selected_scope,
     )
     return {"status": "ok", "dry_run": dry_run}
 
@@ -2150,6 +2306,7 @@ async def optimizer_dry_run(limit: int = 25, stale_days: int = 14, confidence_th
 @app.post("/optimizer/dry_run_from_dashboard", dependencies=[Depends(get_current_username)])
 async def optimizer_dry_run_from_dashboard(
     query: str = Form(""),
+    selected_scope: str = Form(DASHBOARD_SCOPE_ALL),
     page: int = Form(1),
     health_stale_days: int = Form(14),
     health_confidence_threshold: float = Form(0.3),
@@ -2163,6 +2320,7 @@ async def optimizer_dry_run_from_dashboard(
         limit=safe_limit,
         stale_days=safe_stale_days,
         confidence_threshold=safe_confidence,
+        selected_scope=selected_scope,
     )
     dry_message = (
         f"Dry run preview: would decay={dry_run['would_decay_count']}, "
@@ -2173,6 +2331,7 @@ async def optimizer_dry_run_from_dashboard(
             f"/dashboard?dry_run_msg={quote_plus(dry_message)}"
             f"&page={safe_page}"
             f"&query={quote_plus(query or '')}"
+            f"&selected_scope={quote_plus((selected_scope or DASHBOARD_SCOPE_ALL).strip() or DASHBOARD_SCOPE_ALL)}"
             f"&health_stale_days={safe_stale_days}"
             f"&health_confidence_threshold={safe_confidence:.2f}"
             f"&health_limit={safe_limit}"
@@ -2185,6 +2344,7 @@ async def optimizer_dry_run_from_dashboard(
 async def optimizer_archive_selected_from_dashboard(
     selected_page_ids: list[int] = Form([]),
     query: str = Form(""),
+    selected_scope: str = Form(DASHBOARD_SCOPE_ALL),
     page: int = Form(1),
     health_stale_days: int = Form(14),
     health_confidence_threshold: float = Form(0.3),
@@ -2211,6 +2371,7 @@ async def optimizer_archive_selected_from_dashboard(
             f"/dashboard?{msg_key}={quote_plus(msg)}"
             f"&page={safe_page}"
             f"&query={quote_plus(query or '')}"
+            f"&selected_scope={quote_plus((selected_scope or DASHBOARD_SCOPE_ALL).strip() or DASHBOARD_SCOPE_ALL)}"
             f"&health_stale_days={safe_stale_days}"
             f"&health_confidence_threshold={safe_confidence:.2f}"
             f"&health_limit={safe_limit}"
@@ -2222,6 +2383,7 @@ async def optimizer_archive_selected_from_dashboard(
 @app.post("/optimizer/undo_latest_manual_archive_from_dashboard", dependencies=[Depends(get_current_username)])
 async def optimizer_undo_latest_manual_archive_from_dashboard(
     query: str = Form(""),
+    selected_scope: str = Form(DASHBOARD_SCOPE_ALL),
     page: int = Form(1),
     health_stale_days: int = Form(14),
     health_confidence_threshold: float = Form(0.3),
@@ -2247,6 +2409,7 @@ async def optimizer_undo_latest_manual_archive_from_dashboard(
             f"/dashboard?restore_msg={quote_plus(msg)}"
             f"&page={safe_page}"
             f"&query={quote_plus(query or '')}"
+            f"&selected_scope={quote_plus((selected_scope or DASHBOARD_SCOPE_ALL).strip() or DASHBOARD_SCOPE_ALL)}"
             f"&health_stale_days={safe_stale_days}"
             f"&health_confidence_threshold={safe_confidence:.2f}"
             f"&health_limit={safe_limit}"
@@ -2256,7 +2419,12 @@ async def optimizer_undo_latest_manual_archive_from_dashboard(
 
 
 @app.get("/optimizer/review", dependencies=[Depends(get_current_username)])
-async def review_optimizer_candidates(limit: int = 25, stale_days: int = 14, confidence_threshold: float = 0.3):
+async def review_optimizer_candidates(
+    limit: int = 25,
+    stale_days: int = 14,
+    confidence_threshold: float = 0.3,
+    selected_scope: str = DASHBOARD_SCOPE_ALL,
+):
     safe_limit = max(1, min(limit, 200))
     safe_stale_days = max(1, min(stale_days, 3650))
     safe_confidence = clamp(confidence_threshold, 0.0, 1.0)
@@ -2264,6 +2432,7 @@ async def review_optimizer_candidates(limit: int = 25, stale_days: int = 14, con
         limit=safe_limit,
         stale_days=safe_stale_days,
         confidence_threshold=safe_confidence,
+        selected_scope=selected_scope,
     )
     return {"status": "ok", "review": review}
 
