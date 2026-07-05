@@ -28,8 +28,23 @@ esac
 
 KEY=""
 if [ -n "$KEY_VAR" ]; then
-    read -p "Enter $KEY_VAR: " KEY
+    CURRENT_PROVIDER_KEY="${!KEY_VAR}"
+    read -p "Enter $KEY_VAR [${CURRENT_PROVIDER_KEY:-}]: " INPUT_PROVIDER_KEY
+    KEY="${INPUT_PROVIDER_KEY:-$CURRENT_PROVIDER_KEY}"
 fi
+
+# Preserve existing provider keys unless explicitly replaced for selected provider.
+FINAL_OPENAI_API_KEY="${OPENAI_API_KEY:-}"
+FINAL_GEMINI_API_KEY="${GEMINI_API_KEY:-}"
+FINAL_ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:-}"
+FINAL_OPENROUTER_API_KEY="${OPENROUTER_API_KEY:-}"
+
+case "$PROVIDER" in
+    openai) FINAL_OPENAI_API_KEY="$KEY" ;;
+    gemini) FINAL_GEMINI_API_KEY="$KEY" ;;
+    anthropic) FINAL_ANTHROPIC_API_KEY="$KEY" ;;
+    openrouter) FINAL_OPENROUTER_API_KEY="$KEY" ;;
+esac
 
 # Load current .env for defaults (robust against spaces/special chars in values)
 if [ -f .env ]; then
@@ -80,7 +95,10 @@ read -p "Enter Telegram Chat ID [${TELEGRAM_CHAT_ID:-}]: " INPUT_TELEGRAM_CHAT_I
 
 cat <<EOF > .env
 AI_PROVIDER=$PROVIDER
-$KEY_VAR=$KEY
+OPENAI_API_KEY=$FINAL_OPENAI_API_KEY
+GEMINI_API_KEY=$FINAL_GEMINI_API_KEY
+ANTHROPIC_API_KEY=$FINAL_ANTHROPIC_API_KEY
+OPENROUTER_API_KEY=$FINAL_OPENROUTER_API_KEY
 API_URL=https://openclawmemwin.postarmory.com
 API_KEY=${INPUT_API_KEY:-${API_KEY:-"YOUR_KEY_HERE"}}
 SYNC_DIR=$(pwd)/sync

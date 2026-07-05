@@ -42,8 +42,24 @@ switch ($choice) {
     "5" { $provider = "openrouter"; $provider_key_name = "OPENROUTER_API_KEY" }
 }
 
+if (-not $provider) { Write-Host "[!] Invalid provider choice." -ForegroundColor Red; exit }
+
+$OPENAI_API_KEY = if ($config.ContainsKey("OPENAI_API_KEY")) { $config["OPENAI_API_KEY"] } else { "" }
+$GEMINI_API_KEY = if ($config.ContainsKey("GEMINI_API_KEY")) { $config["GEMINI_API_KEY"] } else { "" }
+$ANTHROPIC_API_KEY = if ($config.ContainsKey("ANTHROPIC_API_KEY")) { $config["ANTHROPIC_API_KEY"] } else { "" }
+$OPENROUTER_API_KEY = if ($config.ContainsKey("OPENROUTER_API_KEY")) { $config["OPENROUTER_API_KEY"] } else { "" }
+
 if ($provider_key_name) {
-    $key = Read-Host "Enter $provider_key_name"
+    $currentProviderKey = if ($config.ContainsKey($provider_key_name)) { $config[$provider_key_name] } else { "" }
+    $enteredProviderKey = Read-Host "Enter $provider_key_name [$currentProviderKey]"
+    if ([string]::IsNullOrWhiteSpace($enteredProviderKey)) { $key = $currentProviderKey } else { $key = $enteredProviderKey }
+
+    switch ($provider_key_name) {
+        "OPENAI_API_KEY" { $OPENAI_API_KEY = $key }
+        "GEMINI_API_KEY" { $GEMINI_API_KEY = $key }
+        "ANTHROPIC_API_KEY" { $ANTHROPIC_API_KEY = $key }
+        "OPENROUTER_API_KEY" { $OPENROUTER_API_KEY = $key }
+    }
 }
 
 # 4. Save Config
@@ -94,7 +110,10 @@ $UPDATE_RESTART_COMMAND = Get-Input "UPDATE_RESTART_COMMAND" "Restart command af
 
 $content = @"
 AI_PROVIDER=$provider
-$provider_key_name=$key
+OPENAI_API_KEY=$OPENAI_API_KEY
+GEMINI_API_KEY=$GEMINI_API_KEY
+ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY
+OPENROUTER_API_KEY=$OPENROUTER_API_KEY
 API_URL=https://openclawmemwin.postarmory.com
 API_KEY=$API_KEY
 SYNC_DIR=$syncDir
