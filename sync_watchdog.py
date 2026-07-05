@@ -20,7 +20,7 @@ def _load_env_file_fallback(path: str = ".env"):
                 continue
             key, value = line.split("=", 1)
             key = key.strip().lstrip("\ufeff")
-            value = value.strip()
+            value = value.strip().strip('"').strip("'")
             if key and key not in os.environ:
                 os.environ[key] = value
 
@@ -29,8 +29,25 @@ load_dotenv()
 _load_env_file_fallback()
 
 # Configuration
-_default_db = os.path.join(os.getenv("LOCALAPPDATA", ""), "hermes", "state.db")
-DB_PATH = os.getenv("HERMES_DB_PATH", _default_db)
+def _default_hermes_db_path() -> str:
+    local_appdata = os.getenv("LOCALAPPDATA", "").strip()
+    if local_appdata:
+        return os.path.join(local_appdata, "hermes", "state.db")
+
+    home = os.path.expanduser("~")
+    linux_candidates = [
+        os.path.join(home, ".local", "share", "hermes", "state.db"),
+        os.path.join(home, "hermes", "state.db"),
+    ]
+    for candidate in linux_candidates:
+        if os.path.exists(candidate):
+            return candidate
+
+    # Fallback for logs and manual configuration when no known default exists.
+    return linux_candidates[0]
+
+
+DB_PATH = os.getenv("HERMES_DB_PATH", _default_hermes_db_path())
 BASE_URL = os.getenv("MEM_PUBLIC_URL") or os.getenv("OPENCLAW_URL") or "http://localhost:8010"
 API_URL = BASE_URL.rstrip("/") + "/capture"
 API_KEY = os.getenv("API_KEY") or os.getenv("OPENCLAW_KEY")
@@ -76,6 +93,15 @@ def sync_messages():
 
 if __name__ == "__main__":
     print("[WATCHDOG] Starting memory sync service...")
+
+    if not API_KEY:
+        print("[WATCHDOG] Disabled: API_KEY is not set in .env. Set API_KEY to enable watchdog sync.")
+        raise SystemExit(0)
+
+    if not os.path.exists(DB_PATH):
+        print(f"[WATCHDOG] Disabled: Hermes DB not found at {DB_PATH}. Set HERMES_DB_PATH to enable watchdog sync.")
+        raise SystemExit(0)
+
     while True:
         try:
             sync_messages()
