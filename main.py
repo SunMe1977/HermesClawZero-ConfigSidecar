@@ -222,6 +222,7 @@ ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 OPENAI_EMBED_MODEL = os.getenv("OPENAI_EMBED_MODEL", "text-embedding-3-small")
 OPENROUTER_EMBED_MODEL = os.getenv("OPENROUTER_EMBED_MODEL", "text-embedding-3-small")
 GEMINI_EMBED_MODEL = os.getenv("GEMINI_EMBED_MODEL", "models/text-embedding-004")
+EMBEDDING_DIM = os.getenv("EMBEDDING_DIM", "").strip()
 DECAY_INTERVAL_SECONDS = int(os.getenv("MEMORY_DECAY_INTERVAL_SECONDS", "21600"))
 
 
@@ -367,6 +368,103 @@ def provider_runtime_info() -> dict:
         },
         "resolution_error": resolution_error,
     }
+
+
+def infer_embedding_dimension() -> int:
+    if EMBEDDING_DIM:
+        try:
+            parsed = int(EMBEDDING_DIM)
+            if parsed > 0:
+                return parsed
+        except Exception:
+            pass
+
+    if EMBEDDING_PROVIDER != "auto":
+        provider = EMBEDDING_PROVIDER
+    else:
+        provider = AI_PROVIDER
+        if provider == "anthropic":
+            if OPENROUTER_API_KEY:
+                provider = "openrouter"
+            elif OPENAI_API_KEY:
+                provider = "openai"
+            elif GEMINI_API_KEY:
+                provider = "gemini"
+            else:
+                provider = "openrouter"
+
+    dims_by_provider = {
+        "ollama": 768,
+        "openai": 1536,
+        "openrouter": 1536,
+        "gemini": 768,
+    }
+    return dims_by_provider.get(provider, 768)
+
+
+def ensure_embeddings_schema(expected_dim: int) -> None:
+    with connect_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM information_schema.tables
+                    WHERE table_schema = 'public' AND table_name = 'embeddings'
+                )
+                """
+            )
+            exists = bool(cur.fetchone()[0])
+
+            if not exists:
+                cur.execute(
+                    f"""
+                    CREATE TABLE embeddings (
+                      id SERIAL PRIMARY KEY,
+                      page_id INT REFERENCES pages(id) ON DELETE CASCADE,
+                      embedding vector({expected_dim}),
+                      created_at TIMESTAMP DEFAULT NOW()
+                    )
+                    """
+                )
+                conn.commit()
+                return
+
+            cur.execute(
+                """
+                SELECT format_type(a.atttypid, a.atttypmod)
+                FROM pg_attribute a
+                JOIN pg_class c ON a.attrelid = c.oid
+                JOIN pg_namespace n ON c.relnamespace = n.oid
+                WHERE n.nspname = 'public'
+                  AND c.relname = 'embeddings'
+                  AND a.attname = 'embedding'
+                  AND a.attnum > 0
+                  AND NOT a.attisdropped
+                LIMIT 1
+                """
+            )
+            row = cur.fetchone()
+            current_type = row[0] if row else ""
+            expected_type = f"vector({expected_dim})"
+
+            if current_type != expected_type:
+                print(
+                    f"[SCHEMA] embeddings.embedding type mismatch ({current_type or 'unknown'} -> {expected_type}). "
+                    "Recreating embeddings table for provider alignment."
+                )
+                cur.execute("DROP TABLE IF EXISTS embeddings")
+                cur.execute(
+                    f"""
+                    CREATE TABLE embeddings (
+                      id SERIAL PRIMARY KEY,
+                      page_id INT REFERENCES pages(id) ON DELETE CASCADE,
+                      embedding vector({expected_dim}),
+                      created_at TIMESTAMP DEFAULT NOW()
+                    )
+                    """
+                )
+            conn.commit()
 
 
 def clamp(value: float, low: float = 0.0, high: float = 1.0) -> float:
@@ -557,6 +655,8 @@ def ensure_phase1_schema() -> None:
             cur.execute("ALTER TABLE pages_archive ADD COLUMN IF NOT EXISTS archive_batch_id TEXT")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_pages_archive_batch ON pages_archive(archive_batch_id)")
             conn.commit()
+
+    ensure_embeddings_schema(infer_embedding_dimension())
 
 
 def run_decay_and_archive_once() -> dict:
@@ -1154,12 +1254,26 @@ async def capture(text: str | None = None, body: CaptureRequest | None = Body(de
             page_id = cur.fetchone()[0]
             conn.commit()
 
-    emb = generate_embedding(capture_text)
-    emb_str = embedding_to_pgvector_literal(emb)
-    with connect_db() as conn:
-        with conn.cursor() as cur:
-            cur.execute("INSERT INTO embeddings (page_id, embedding) VALUES (%s, %s::vector)", (page_id, emb_str))
-            conn.commit()
+    try:
+        emb = generate_embedding(capture_text)
+        emb_str = embedding_to_pgvector_literal(emb)
+        with connect_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute("INSERT INTO embeddings (page_id, embedding) VALUES (%s, %s::vector)", (page_id, emb_str))
+                conn.commit()
+    except HTTPException:
+        # Roll back page-only inserts so failed embeddings do not create orphan records.
+        with connect_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute("DELETE FROM pages WHERE id = %s", (page_id,))
+                conn.commit()
+        raise
+    except Exception as ex:
+        with connect_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute("DELETE FROM pages WHERE id = %s", (page_id,))
+                conn.commit()
+        raise HTTPException(status_code=500, detail=f"Failed to store embedding: {ex}") from ex
     return {
         "status": "ok",
         "page_id": page_id,
