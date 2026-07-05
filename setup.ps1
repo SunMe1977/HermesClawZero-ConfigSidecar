@@ -42,9 +42,9 @@ $syncDir = (Get-Location).Path + '\sync'
 $content = @"
 AI_PROVIDER=$provider
 $provider_key_name=$key
-OPENCLAW_URL=https://openclawmemwin.postarmory.com
-OPENCLAW_KEY=$($config['OPENCLAW_KEY'])
-OPENCLAW_SYNC_DIR=$syncDir
+API_URL=https://openclawmemwin.postarmory.com
+API_KEY=$($config['API_KEY'])
+SYNC_DIR=$syncDir
 DB_PASSWORD=$($config['DB_PASSWORD'])
 OLLAMA_HOST=http://host.docker.internal:11435
 "@

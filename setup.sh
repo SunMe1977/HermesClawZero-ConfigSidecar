@@ -32,9 +32,9 @@ fi
 cat <<EOF > .env
 AI_PROVIDER=$PROVIDER
 $KEY_VAR=$KEY
-OPENCLAW_URL=https://openclawmemwin.postarmory.com
-OPENCLAW_KEY=${OPENCLAW_KEY:-"YOUR_KEY_HERE"}
-OPENCLAW_SYNC_DIR=$(pwd)/sync
+API_URL=https://openclawmemwin.postarmory.com
+API_KEY=${API_KEY:-"YOUR_KEY_HERE"}
+SYNC_DIR=$(pwd)/sync
 DB_PASSWORD=${DB_PASSWORD:-""}
 OLLAMA_HOST=http://host.docker.internal:11435
 EOF

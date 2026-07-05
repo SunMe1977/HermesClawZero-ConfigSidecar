@@ -9,9 +9,9 @@ from pydantic import BaseModel
 
 app = FastAPI()
 
-API_KEY = os.getenv("OPENCLAW_KEY")
+API_KEY = os.getenv("API_KEY")
 if not API_KEY:
-    raise RuntimeError("OPENCLAW_KEY environment variable must be set")
+    raise RuntimeError("API_KEY environment variable must be set")
 
 
 class CaptureRequest(BaseModel):

@@ -3,9 +3,9 @@ import sys
 import os
 
 # Update these to match your HermesClawZero setup
-BASE_URL = os.getenv("OPENCLAW_URL", "http://localhost:8000")
-API_KEY = os.getenv("OPENCLAW_KEY", "")
-SYNC_DIR = os.getenv("OPENCLAW_SYNC_DIR", os.path.join(os.getcwd(), "sync"))
+BASE_URL = os.getenv("API_URL", "http://localhost:8000")
+API_KEY = os.getenv("API_KEY", "")
+SYNC_DIR = os.getenv("SYNC_DIR", os.path.join(os.getcwd(), "sync"))
 
 def capture(text):
     url = f"{BASE_URL}/capture"

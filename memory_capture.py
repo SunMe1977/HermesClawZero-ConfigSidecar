@@ -9,8 +9,8 @@ if len(sys.argv) < 2:
 text = sys.argv[1]
 
 resp = requests.post(
-    os.getenv("OPENCLAW_URL", "http://localhost:8000") + "/capture",
-    headers={"X-API-Key": os.getenv("OPENCLAW_KEY", "")},
+    os.getenv("API_URL", "http://localhost:8000") + "/capture",
+    headers={"X-API-Key": os.getenv("API_KEY", "")},
     json={"text": text},
 )
 

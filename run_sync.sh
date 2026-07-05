@@ -1,5 +1,5 @@
 #!/bin/bash
-# Load OPENCLAW_URL / OPENCLAW_KEY from .env
+# Load API_URL / API_KEY from .env
 set -a
 [ -f .env ] && source .env
 set +a

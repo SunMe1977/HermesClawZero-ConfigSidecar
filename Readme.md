@@ -20,7 +20,7 @@ No manual configuration needed. Just run the setup script for your OS. It will v
 - **Local**: Ollama (Docker)
 - **Cloud**: OpenAI, Google Gemini, Anthropic, OpenRouter
 
-*(After the first run, update the `OPENCLAW_KEY` in the generated `.env` file with your secret.)*
+*(After the first run, update the `API_KEY` in the generated `.env` file with your secret.)*
 
 ---
 ## Requirements
@@ -51,7 +51,7 @@ This project provides a robust CLI (`scripts/memory.py`), a drag-and-drop ingest
 - **Maintenance**: Regularly run `maintenance.bat` if you have imported large batches of data.
 
 ## Troubleshooting
-- **401 Unauthorized**: Ensure your `OPENCLAW_KEY` in `.env` matches the server secret.
+- **401 Unauthorized**: Ensure your `API_KEY` in `.env` matches the server secret.
 - **Sync service not running**: Check if `memory_sync.py` is active in your process monitor.
 - **Log missing from memory**: Verify that the file was written to the `sync/` directory. If it remains there, the watchdog process needs to be restarted.
 

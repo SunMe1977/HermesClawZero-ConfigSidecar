@@ -9,8 +9,8 @@ DB_PATH = os.getenv(
     "HERMES_STATE_DB",
     os.path.join(os.getenv("LOCALAPPDATA", ""), "hermes", "state.db"),
 )
-API_URL = os.getenv("OPENCLAW_URL", "http://localhost:8000") + "/capture"
-API_KEY = os.getenv("OPENCLAW_KEY", "")
+API_URL = os.getenv("API_URL", "http://localhost:8000") + "/capture"
+API_KEY = os.getenv("API_KEY", "")
 LAST_ID_FILE = pathlib.Path("sync_last_id.txt")
 
 def get_last_synced_id():
