@@ -159,11 +159,37 @@ Sidecar flow:
 | Dashboard operations | No | Yes |
 | Zero-config setup | No | Yes |
 
+## Product Comparison (Verified)
+Legend:
+- ✅ = explicitly supported / documented
+- ⚠️ = available but not the primary/default path
+- ❌ = not a stated core focus in official docs
+
+| Product | Open Source Core | Self-Host | Managed Cloud Option | PostgreSQL Native Focus | Hermes/OpenClaw Focus | Notes |
+|---|---|---|---|---|---|---|
+| HermesClaw Zero-Config Sidecar | ✅ | ✅ | ❌ | ✅ | ✅ | Built for Hermes/OpenClaw memory workflows |
+| Mem0 | ✅ | ✅ | ✅ | ❌ | ❌ | OSS + self-host + managed platform |
+| gBrain | ✅ | ✅ | ⚠️ | ✅ | ✅ | Strong Hermes/OpenClaw alignment |
+| OpenMemory | ✅ | ✅ | ❌ | ❌ | ❌ | ⚠️ Marked as sunset by maintainers |
+| Chroma | ✅ | ✅ | ✅ | ❌ | ❌ | General vector DB/retrieval stack |
+| Weaviate | ✅ | ✅ | ✅ | ❌ | ❌ | General vector DB + cloud ecosystem |
+| Pinecone | ❌ | ❌ | ✅ | ❌ | ❌ | Managed-first vector platform |
+
 ## Why Use This Instead Of Generic Memory Stacks?
 - ✅ Tailored for Hermes + OpenClaw usage
 - ✅ Zero-config, Docker-first local deployment
 - ✅ PostgreSQL-backed persistence with pgvector
 - ✅ Multi-tenant memory isolation already integrated
+
+## What We Still Need (Gap Check)
+- 🧪 Benchmark section with reproducible latency/memory numbers
+- 🎞️ Animated setup/demo GIF for fast product understanding
+- 🔁 Hybrid retrieval implementation (semantic + lexical fusion)
+- 📝 Memory summarization pipeline for long histories
+- 🕸️ Knowledge graph layer for relationship-aware recall
+- 📊 Stronger dashboard UX (more filtering, better timelines)
+- 🚀 GitHub release workflow (`v1.0.0` and ongoing changelog discipline)
+- 🏷️ GitHub topics for discoverability (`hermes`, `openclaw`, `memory`, `pgvector`, etc.)
 
 ## Who Is This For?
 - 👩‍💻 AI developers building long-running assistants
