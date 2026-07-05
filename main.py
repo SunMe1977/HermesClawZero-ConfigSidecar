@@ -327,6 +327,28 @@ def generate_embedding(text: str) -> list[float]:
     )
 
 
+def provider_runtime_info() -> dict:
+    resolved = None
+    resolution_error = None
+    try:
+        resolved = resolve_embedding_provider()
+    except Exception as ex:
+        resolution_error = str(ex)
+
+    return {
+        "ai_provider": AI_PROVIDER,
+        "embedding_provider": EMBEDDING_PROVIDER,
+        "resolved_embedding_provider": resolved,
+        "keys_present": {
+            "openai": bool(OPENAI_API_KEY),
+            "openrouter": bool(OPENROUTER_API_KEY),
+            "gemini": bool(GEMINI_API_KEY),
+            "anthropic": bool(ANTHROPIC_API_KEY),
+        },
+        "resolution_error": resolution_error,
+    }
+
+
 def clamp(value: float, low: float = 0.0, high: float = 1.0) -> float:
     return max(low, min(high, value))
 
@@ -1643,7 +1665,11 @@ async def run_optimizer_now():
 
 @app.get("/version")
 async def version_info():
-    return {"status": "ok", "version": get_version_info()}
+    return {
+        "status": "ok",
+        "version": get_version_info(),
+        "providers": provider_runtime_info(),
+    }
 
 
 @app.get("/update/status", dependencies=[Depends(get_current_username)])

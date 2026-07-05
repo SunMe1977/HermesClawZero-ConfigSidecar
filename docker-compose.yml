@@ -40,6 +40,8 @@ services:
       DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
       API_URL: ${API_URL}
       API_KEY: ${API_KEY:?API_KEY is required}
+      AI_PROVIDER: ${AI_PROVIDER:-ollama}
+      EMBEDDING_PROVIDER: auto
       SYNC_DIR: ${SYNC_DIR}
       OLLAMA_HOST: ${OLLAMA_HOST}
     healthcheck:
