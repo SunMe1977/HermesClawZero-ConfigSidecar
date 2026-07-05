@@ -117,7 +117,7 @@ The system includes a secure, interactive web dashboard to view and manage your 
 - **Security note**: Change the default password before exposing the service outside localhost.
 
 ## Visual Demo Checklist
-Add these visuals to strengthen your Medium article and repository story:
+Add these visuals to strengthen your repository documentation and demos:
 - Startup flow (setup and first run)
 - Docker containers healthy
 - Memory capture and retrieval in terminal
@@ -140,9 +140,6 @@ Add these visuals to strengthen your Medium article and repository story:
     - Run App Update
     - Version JSON at /version
     - Update status JSON at /update/status
-
-## Medium Intro (Aligned Voice)
-Large language models are impressive, but they still forget key details between sessions. Bigger context windows help, but they raise cost and still lose continuity over time. I built HermesClaw Zero-Config Sidecar as a practical, self-hosted memory layer for Hermes and OpenClaw: capture what matters, store it in PostgreSQL with embeddings, and retrieve it quickly through a simple API and dashboard.
 
 ## Automating Tasks (Cron Jobs)
 To ensure your memory stays tidy and you get daily reminders, add these tasks to your system's scheduler (e.g., `crontab -e` on Linux):
