@@ -14,6 +14,15 @@ if (Test-Path $envFile) {
     }
 }
 
+function Get-Input {
+    param([string]$key, [string]$prompt, [string]$default)
+    $val = $config[$key]
+    if ([string]::IsNullOrWhiteSpace($val)) { $val = $default }
+    $input = Read-Host "$prompt [$val]"
+    if ([string]::IsNullOrWhiteSpace($input)) { return $val }
+    return $input
+}
+
 # 3. Provider Menu
 Write-Host "Select Primary AI Provider:" -ForegroundColor Cyan
 Write-Host "1. Local Ollama (Docker)"
@@ -39,21 +48,15 @@ if ($provider_key_name) {
 
 # 4. Save Config
 $syncDir = (Get-Location).Path + '\sync'
-$existingApiKey = $config['API_KEY']
-if ([string]::IsNullOrWhiteSpace($existingApiKey)) { $existingApiKey = $config['OPENCLAW_KEY'] }
-$existingBaseUrl = $config['MEM_PUBLIC_URL']
-if ([string]::IsNullOrWhiteSpace($existingBaseUrl)) { $existingBaseUrl = $config['OPENCLAW_URL'] }
-if ([string]::IsNullOrWhiteSpace($existingBaseUrl)) { $existingBaseUrl = "http://localhost:8000" }
-$existingSyncDir = $config['MEM_SYNC_DIR']
-if ([string]::IsNullOrWhiteSpace($existingSyncDir)) { $existingSyncDir = $config['OPENCLAW_SYNC_DIR'] }
-if ([string]::IsNullOrWhiteSpace($existingSyncDir)) { $existingSyncDir = $syncDir }
+$OPENCLAW_KEY = Get-Input "OPENCLAW_KEY" "Enter OpenClaw API Key" "YOUR_KEY_HERE"
 $DASHBOARD_PASS = Get-Input "DASHBOARD_PASSWORD" "Enter Dashboard Password (for web login)" "admin"
 $DB_PASSWORD = Get-Input "DB_PASSWORD" "Enter Database Password" ""
+
 $content = @"
 AI_PROVIDER=$provider
 $provider_key_name=$key
 OPENCLAW_URL=https://openclawmemwin.postarmory.com
-OPENCLAW_KEY=$($config['OPENCLAW_KEY'])
+OPENCLAW_KEY=$OPENCLAW_KEY
 OPENCLAW_SYNC_DIR=$syncDir
 DB_PASSWORD=$DB_PASSWORD
 DASHBOARD_PASSWORD=$DASHBOARD_PASS
