@@ -108,6 +108,10 @@ This project provides a robust CLI (`scripts/memory.py`), a drag-and-drop ingest
 - **Deduplication**: The backend (`main.py`) automatically performs semantic similarity checks to prevent duplicate entries.
 - **Maintenance**: Regularly run `maintenance.bat` if you have imported large batches of data.
 
+## Database View
+
+![Database (PostgreSQL)](images/db.png "PostgreSQL memory data view")
+
 ## Accessing the Dashboard
 
 ![Dashboard](images/dashboard.png "Dashboard")
@@ -116,14 +120,6 @@ The system includes a secure, interactive web dashboard to view and manage your 
 - **Login**: Username is `admin`; password is the value you set during setup.
 - **Security note**: Change the default password before exposing the service outside localhost.
 
-## Visual Demo Checklist
-Add these visuals to strengthen your repository documentation and demos:
-- Startup flow (setup and first run)
-- Docker containers healthy
-- Memory capture and retrieval in terminal
-- Dashboard actions (search, delete, optimizer dry-run)
-- PostgreSQL tables or quick query proof
-- Short GIF of end-to-end flow (capture -> search -> dashboard)
 
 ## App Version & Updates
 - Base version is stored in VERSION and can be overridden by APP_VERSION in .env.
