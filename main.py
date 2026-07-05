@@ -214,15 +214,54 @@ def embedding_to_pgvector_literal(embedding: list[float]) -> str:
 OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://host.docker.internal:11435")
 client = ollama.Client(host=OLLAMA_HOST)
 AI_PROVIDER = (os.getenv("AI_PROVIDER", "ollama") or "ollama").strip().lower()
+EMBEDDING_PROVIDER = (os.getenv("EMBEDDING_PROVIDER", "auto") or "auto").strip().lower()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 OPENAI_EMBED_MODEL = os.getenv("OPENAI_EMBED_MODEL", "text-embedding-3-small")
 OPENROUTER_EMBED_MODEL = os.getenv("OPENROUTER_EMBED_MODEL", "text-embedding-3-small")
+GEMINI_EMBED_MODEL = os.getenv("GEMINI_EMBED_MODEL", "models/text-embedding-004")
 DECAY_INTERVAL_SECONDS = int(os.getenv("MEMORY_DECAY_INTERVAL_SECONDS", "21600"))
 
 
+def resolve_embedding_provider() -> str:
+    if EMBEDDING_PROVIDER not in {"auto", "ollama", "openai", "openrouter", "gemini"}:
+        raise HTTPException(
+            status_code=500,
+            detail="Invalid EMBEDDING_PROVIDER. Use one of: auto, ollama, openai, openrouter, gemini",
+        )
+
+    if EMBEDDING_PROVIDER != "auto":
+        return EMBEDDING_PROVIDER
+
+    if AI_PROVIDER in {"ollama", "openai", "openrouter", "gemini"}:
+        return AI_PROVIDER
+
+    if AI_PROVIDER == "anthropic":
+        # Anthropic does not offer native text embeddings; auto-route to available embed provider.
+        if OPENROUTER_API_KEY:
+            return "openrouter"
+        if OPENAI_API_KEY:
+            return "openai"
+        if GEMINI_API_KEY:
+            return "gemini"
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "AI_PROVIDER=anthropic requires EMBEDDING_PROVIDER or an embedding key "
+                "(OPENROUTER_API_KEY, OPENAI_API_KEY, or GEMINI_API_KEY)."
+            ),
+        )
+
+    raise HTTPException(
+        status_code=500,
+        detail="Unsupported AI_PROVIDER. Use one of: ollama, openai, gemini, anthropic, openrouter",
+    )
+
+
 def generate_embedding(text: str) -> list[float]:
-    provider = AI_PROVIDER
+    provider = resolve_embedding_provider()
     if provider == "ollama":
         resp = client.embeddings(model="nomic-embed-text", prompt=text)
         return resp["embedding"]
@@ -261,11 +300,29 @@ def generate_embedding(text: str) -> list[float]:
         data = response.json()
         return data["data"][0]["embedding"]
 
+    if provider == "gemini":
+        if not GEMINI_API_KEY:
+            raise HTTPException(status_code=500, detail="GEMINI_API_KEY is required when embedding provider is gemini")
+        model_name = GEMINI_EMBED_MODEL if GEMINI_EMBED_MODEL.startswith("models/") else f"models/{GEMINI_EMBED_MODEL}"
+        response = requests.post(
+            f"https://generativelanguage.googleapis.com/v1beta/{model_name}:embedContent?key={GEMINI_API_KEY}",
+            headers={"Content-Type": "application/json"},
+            json={
+                "model": model_name,
+                "content": {"parts": [{"text": text}]},
+            },
+            timeout=45,
+        )
+        if response.status_code >= 400:
+            raise HTTPException(status_code=500, detail=f"Gemini embedding failed: {response.text}")
+        data = response.json()
+        return data["embedding"]["values"]
+
     raise HTTPException(
         status_code=500,
         detail=(
-            "Unsupported AI_PROVIDER for embeddings. "
-            "Use one of: ollama, openai, openrouter"
+            "Unsupported embedding provider. "
+            "Use one of: ollama, openai, openrouter, gemini"
         ),
     )
 

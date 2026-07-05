@@ -62,6 +62,21 @@ if ($provider_key_name) {
     }
 }
 
+$defaultEmbeddingProvider = if ($config.ContainsKey("EMBEDDING_PROVIDER") -and -not [string]::IsNullOrWhiteSpace($config["EMBEDDING_PROVIDER"])) { $config["EMBEDDING_PROVIDER"] } else { "auto" }
+if ($provider -eq "anthropic" -and $defaultEmbeddingProvider -eq "auto") { $defaultEmbeddingProvider = "openrouter" }
+$inputEmbeddingProvider = Read-Host "Embedding provider (auto|ollama|openai|openrouter|gemini) [$defaultEmbeddingProvider]"
+$EMBEDDING_PROVIDER = if ([string]::IsNullOrWhiteSpace($inputEmbeddingProvider)) { $defaultEmbeddingProvider } else { $inputEmbeddingProvider }
+
+if ($EMBEDDING_PROVIDER -eq "openrouter" -and [string]::IsNullOrWhiteSpace($OPENROUTER_API_KEY)) {
+    $OPENROUTER_API_KEY = Read-Host "Enter OPENROUTER_API_KEY for embeddings"
+}
+if ($EMBEDDING_PROVIDER -eq "openai" -and [string]::IsNullOrWhiteSpace($OPENAI_API_KEY)) {
+    $OPENAI_API_KEY = Read-Host "Enter OPENAI_API_KEY for embeddings"
+}
+if ($EMBEDDING_PROVIDER -eq "gemini" -and [string]::IsNullOrWhiteSpace($GEMINI_API_KEY)) {
+    $GEMINI_API_KEY = Read-Host "Enter GEMINI_API_KEY for embeddings"
+}
+
 # 4. Save Config
 $syncDir = (Get-Location).Path + '\sync'
 # 4. Save Config
@@ -110,6 +125,7 @@ $UPDATE_RESTART_COMMAND = Get-Input "UPDATE_RESTART_COMMAND" "Restart command af
 
 $lines = @(
     "AI_PROVIDER=$provider"
+    "EMBEDDING_PROVIDER=$EMBEDDING_PROVIDER"
 )
 
 if (-not [string]::IsNullOrWhiteSpace($OPENAI_API_KEY)) { $lines += "OPENAI_API_KEY=$OPENAI_API_KEY" }
@@ -133,6 +149,9 @@ $lines += @(
     "AUTO_UPDATE_BRANCH=$AUTO_UPDATE_BRANCH"
     "UPDATE_REPO_DIR=$UPDATE_REPO_DIR"
     "UPDATE_RESTART_COMMAND=$UPDATE_RESTART_COMMAND"
+    "OPENAI_EMBED_MODEL=$(Get-Input 'OPENAI_EMBED_MODEL' 'OpenAI embedding model' 'text-embedding-3-small')"
+    "OPENROUTER_EMBED_MODEL=$(Get-Input 'OPENROUTER_EMBED_MODEL' 'OpenRouter embedding model' 'text-embedding-3-small')"
+    "GEMINI_EMBED_MODEL=$(Get-Input 'GEMINI_EMBED_MODEL' 'Gemini embedding model' 'models/text-embedding-004')"
     "OLLAMA_HOST=http://host.docker.internal:11435"
 )
 
