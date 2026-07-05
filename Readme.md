@@ -41,6 +41,18 @@ You can install this project automatically using an AI agent (like OpenClaw or H
 - **Health check**: `http://localhost:8010/healthz`
 - **Dashboard**: `http://localhost:8010/dashboard`
 
+### Runtime Provider Override (Compose-First)
+To avoid accidental provider changes from `.env`, runtime provider selection in `docker-compose.yml` uses `COMPOSE_AI_PROVIDER` with default `openrouter`.
+
+- Effective runtime provider: `AI_PROVIDER=${COMPOSE_AI_PROVIDER:-openrouter}`
+- If `COMPOSE_AI_PROVIDER` is unset, API runs with `openrouter`
+- `.env` key `AI_PROVIDER` is no longer authoritative for runtime inside Compose
+
+Example:
+```bash
+COMPOSE_AI_PROVIDER=openrouter docker compose up -d --force-recreate api
+```
+
 ---
 ## Requirements
 - Python 3.11+
