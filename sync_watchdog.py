@@ -62,18 +62,21 @@ API_URL = BASE_URL.rstrip("/") + "/capture"
 API_KEY = os.getenv("API_KEY") or os.getenv("OPENCLAW_KEY")
 LAST_ID_FILE = pathlib.Path("sync_last_id.txt")
 FAILED_IDS_FILE = pathlib.Path("sync_failed_ids.json")
-MAX_MESSAGES_PER_CYCLE = int(os.getenv("WATCHDOG_MAX_MESSAGES_PER_CYCLE", "50"))
+MAX_MESSAGES_PER_CYCLE = int(os.getenv("WATCHDOG_MAX_MESSAGES_PER_CYCLE", "200"))
 REQUEST_TIMEOUT_SECONDS = int(os.getenv("WATCHDOG_REQUEST_TIMEOUT_SECONDS", "20"))
 MAX_RETRIES_PER_MESSAGE = int(os.getenv("WATCHDOG_MAX_RETRIES_PER_MESSAGE", "5"))
 STATUS_URL = BASE_URL.rstrip("/") + "/watchdog/status"
 IDLE_LOG_INTERVAL_SECONDS = int(os.getenv("WATCHDOG_IDLE_LOG_INTERVAL_SECONDS", "60"))
+BACKLOG_SLEEP_SECONDS = float(os.getenv("WATCHDOG_BACKLOG_SLEEP_SECONDS", "0.2"))
+IDLE_SLEEP_SECONDS = float(os.getenv("WATCHDOG_IDLE_SLEEP_SECONDS", "10"))
 LAST_IDLE_LOG_TS = 0
+SESSION = requests.Session()
 
 
 def _api_reachable() -> bool:
     health_url = BASE_URL.rstrip("/") + "/healthz"
     try:
-        resp = requests.get(health_url, timeout=REQUEST_TIMEOUT_SECONDS)
+        resp = SESSION.get(health_url, timeout=REQUEST_TIMEOUT_SECONDS)
         return resp.status_code < 500
     except Exception:
         return False
@@ -82,7 +85,7 @@ def _api_reachable() -> bool:
 def _post_watchdog_status(last_synced_id: int, latest_source_id: int, last_error: str = ""):
     pending = max(0, latest_source_id - last_synced_id)
     try:
-        requests.post(
+        SESSION.post(
             STATUS_URL,
             params={"key": API_KEY},
             json={
@@ -134,12 +137,12 @@ def _clear_failed_id(counts: dict[int, int], msg_id: int):
         counts.pop(msg_id, None)
         _save_failed_id_counts(counts)
 
-def sync_messages():
+def sync_messages() -> tuple[bool, int]:
     global LAST_IDLE_LOG_TS
 
     if not _api_reachable():
         print(f"[WATCHDOG] API not reachable at {BASE_URL}. Will retry next cycle.")
-        return
+        return False, 0
 
     failed_counts = _load_failed_id_counts()
 
@@ -169,7 +172,9 @@ def sync_messages():
             )
             LAST_IDLE_LOG_TS = now_ts
         conn.close()
-        return
+        return False, 0
+
+    processed_count = 0
     
     for row in rows:
         msg_id, content, role = row
@@ -177,11 +182,12 @@ def sync_messages():
             # Advance cursor for non-syncable rows so the watchdog cannot stall forever.
             save_last_synced_id(msg_id)
             _post_watchdog_status(msg_id, latest_source_id, "")
+            processed_count += 1
             continue
 
         print(f"[WATCHDOG] Syncing message {msg_id}")
         try:
-            resp = requests.post(
+            resp = SESSION.post(
                 API_URL,
                 params={"key": API_KEY},
                 json={"text": f"[{role}]: {content}"},
@@ -191,6 +197,7 @@ def sync_messages():
             save_last_synced_id(msg_id)
             _post_watchdog_status(msg_id, latest_source_id, "")
             _clear_failed_id(failed_counts, msg_id)
+            processed_count += 1
         except requests.HTTPError:
             status_code = resp.status_code if "resp" in locals() else 0
             response_preview = ""
@@ -223,6 +230,7 @@ def sync_messages():
                 save_last_synced_id(msg_id)
                 _post_watchdog_status(msg_id, latest_source_id, "")
                 _clear_failed_id(failed_counts, msg_id)
+                processed_count += 1
                 continue
 
             print("[WATCHDOG] Stopping this cycle to avoid log flood; will retry from last successful ID.")
@@ -234,6 +242,7 @@ def sync_messages():
             break
     
     conn.close()
+            return True, processed_count
 
 if __name__ == "__main__":
     print("[WATCHDOG] Starting memory sync service...")
@@ -248,7 +257,11 @@ if __name__ == "__main__":
 
     while True:
         try:
-            sync_messages()
+            had_backlog, processed_count = sync_messages()
+            if had_backlog and processed_count > 0:
+                time.sleep(max(0.0, BACKLOG_SLEEP_SECONDS))
+            else:
+                time.sleep(max(0.5, IDLE_SLEEP_SECONDS))
         except Exception as e:
             print(f"[WATCHDOG] Error: {e}")
-        time.sleep(10)
+            time.sleep(max(0.5, IDLE_SLEEP_SECONDS))
