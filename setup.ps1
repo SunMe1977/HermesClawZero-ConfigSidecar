@@ -55,6 +55,14 @@ $DASHBOARD_PASS = Get-Input "DASHBOARD_PASSWORD" "Enter Dashboard Password (for 
 $DB_PASSWORD = Get-Input "DB_PASSWORD" "Enter Database Password" ""
 $TELEGRAM_TOKEN = Get-Input "TELEGRAM_BOT_TOKEN" "Enter Telegram Bot Token (optional)" ""
 $TELEGRAM_CHAT_ID = Get-Input "TELEGRAM_CHAT_ID" "Enter Telegram Chat ID (optional)" ""
+$APP_VERSION = Get-Input "APP_VERSION" "Enter Base App Version" "0.1.0"
+$AUTO_UPDATE_ENABLED = Get-Input "AUTO_UPDATE_ENABLED" "Enable Auto Update Worker? (true/false)" "false"
+$AUTO_UPDATE_APPLY = Get-Input "AUTO_UPDATE_APPLY" "Auto apply updates when found? (true/false)" "false"
+$AUTO_UPDATE_INTERVAL_MINUTES = Get-Input "AUTO_UPDATE_INTERVAL_MINUTES" "Auto update check interval (minutes)" "60"
+$AUTO_UPDATE_REMOTE = Get-Input "AUTO_UPDATE_REMOTE" "Git remote for updates" "origin"
+$AUTO_UPDATE_BRANCH = Get-Input "AUTO_UPDATE_BRANCH" "Git branch for updates" "main"
+$UPDATE_REPO_DIR = Get-Input "UPDATE_REPO_DIR" "Repo path used by updater" ((Get-Location).Path)
+$UPDATE_RESTART_COMMAND = Get-Input "UPDATE_RESTART_COMMAND" "Restart command after update (optional)" ""
 
 $content = @"
 AI_PROVIDER=$provider
@@ -66,6 +74,14 @@ DB_PASSWORD=$DB_PASSWORD
 DASHBOARD_PASSWORD=$DASHBOARD_PASS
 TELEGRAM_BOT_TOKEN=$TELEGRAM_TOKEN
 TELEGRAM_CHAT_ID=$TELEGRAM_CHAT_ID
+APP_VERSION=$APP_VERSION
+AUTO_UPDATE_ENABLED=$AUTO_UPDATE_ENABLED
+AUTO_UPDATE_APPLY=$AUTO_UPDATE_APPLY
+AUTO_UPDATE_INTERVAL_MINUTES=$AUTO_UPDATE_INTERVAL_MINUTES
+AUTO_UPDATE_REMOTE=$AUTO_UPDATE_REMOTE
+AUTO_UPDATE_BRANCH=$AUTO_UPDATE_BRANCH
+UPDATE_REPO_DIR=$UPDATE_REPO_DIR
+UPDATE_RESTART_COMMAND=$UPDATE_RESTART_COMMAND
 OLLAMA_HOST=http://host.docker.internal:11435
 "@
 $content | Out-File -FilePath $envFile -Encoding UTF8

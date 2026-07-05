@@ -53,9 +53,27 @@ This project provides a robust CLI (`scripts/memory.py`), a drag-and-drop ingest
 - **Maintenance**: Regularly run `maintenance.bat` if you have imported large batches of data.
 
 ## Accessing the Dashboard
+
+![Dashboard](images/dashboard.webp "Dashboard")
 The system includes a secure, interactive web dashboard to view and manage your memory:
 - **URL**: [http://localhost:8000/dashboard](http://localhost:8000/dashboard)
 - **Login**: `admin` / (The password set during setup)
+
+## App Version & Updates
+- Base version is stored in VERSION and can be overridden by APP_VERSION in .env.
+- Runtime version includes git commit metadata when available (for example: 0.1.0+build.123.ab12cd3).
+- Setup now supports update configuration in .env:
+    - AUTO_UPDATE_ENABLED
+    - AUTO_UPDATE_APPLY
+    - AUTO_UPDATE_INTERVAL_MINUTES
+    - AUTO_UPDATE_REMOTE
+    - AUTO_UPDATE_BRANCH
+    - UPDATE_REPO_DIR
+    - UPDATE_RESTART_COMMAND
+- Dashboard offers update controls:
+    - Run App Update
+    - Version JSON at /version
+    - Update status JSON at /update/status
 
 ## Automating Tasks (Cron Jobs)
 To ensure your memory stays tidy and you get daily reminders, add these tasks to your system's scheduler (e.g., `crontab -e` on Linux):
