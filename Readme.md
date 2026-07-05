@@ -47,6 +47,30 @@ You can install this project automatically using an AI agent (like OpenClaw or H
 - Docker Desktop
 - [Ollama](https://ollama.com/) (Optional: The setup script can run this for you in Docker)
 
+## Provider Support (No-Ollama Ready)
+The setup options are now wired to real runtime behavior, including non-Ollama deployments.
+
+| Setup Option | AI_PROVIDER | Embedding Path Used by `/capture` and `/search` | Works Without Ollama? | Required Key(s) |
+|---|---|---|---|---|
+| 1. Local Ollama (Docker) | `ollama` | Ollama local embeddings (`nomic-embed-text`) | No | None |
+| 2. OpenAI | `openai` | OpenAI embeddings API | Yes | `OPENAI_API_KEY` |
+| 3. Google Gemini | `gemini` | Gemini embeddings API | Yes | `GEMINI_API_KEY` |
+| 4. Anthropic | `anthropic` | Anthropic-compatible mode with configurable embedding provider (`openrouter`, `openai`, or `gemini`) | Yes | `ANTHROPIC_API_KEY` plus an embedding key |
+| 5. OpenRouter | `openrouter` | OpenRouter embeddings API | Yes | `OPENROUTER_API_KEY` |
+
+### Why We Need Multiple Providers
+- **Reliability**: If one provider has limits, latency, or outages, you can switch quickly.
+- **Cost control**: Different teams optimize for local runtime costs (Ollama) or API spend (cloud providers).
+- **Compliance and region constraints**: Some environments require specific hosted services.
+- **Performance tuning**: Embedding quality, speed, and availability differ by provider.
+- **Anthropic compatibility**: Anthropic is supported for your primary provider selection, while embeddings are routed through a dedicated embedding backend for memory indexing.
+
+### Supported Services
+- **Memory storage**: PostgreSQL + pgvector
+- **Embedding backends**: Ollama, OpenAI, Gemini, OpenRouter
+- **Primary provider modes**: Ollama, OpenAI, Gemini, Anthropic, OpenRouter
+- **Web/API services**: FastAPI endpoints (`/capture`, `/search`, `/dashboard`, `/healthz`, `/version`)
+
 ---
 
 ## The Architecture
