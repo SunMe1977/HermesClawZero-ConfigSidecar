@@ -3,7 +3,6 @@
 cd "$(dirname "$0")"
 
 echo "[START] System Services..."
-python3 sync_watchdog.py &
 docker compose down
 
 PROVIDER=""
@@ -18,5 +17,8 @@ else
 	echo "[START] AI_PROVIDER=${PROVIDER:-unset} -> starting without Ollama container"
 	docker compose up --build -d
 fi
+
+echo "[START] Launching sync_watchdog.py in background"
+python3 sync_watchdog.py &
 
 echo "[OK] System running."
