@@ -975,6 +975,20 @@ def run_decay_and_archive_once() -> dict:
     }
 
 
+def cleanup_orphaned_embeddings() -> int:
+    with connect_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                DELETE FROM embeddings
+                WHERE page_id NOT IN (SELECT id FROM pages)
+                """
+            )
+            deleted_count = int(cur.rowcount or 0)
+            conn.commit()
+    return deleted_count
+
+
 def get_optimizer_review(
     limit: int = 25,
     stale_days: int = 14,
@@ -2341,6 +2355,8 @@ def startup_event():
 
     try:
         ensure_phase1_schema()
+        orphaned_deleted = cleanup_orphaned_embeddings()
+        print(f"[SCHEMA] cleanup_orphaned_embeddings deleted={orphaned_deleted}")
         run_decay_and_archive_once()
     except Exception as ex:
         raise RuntimeError(f"Startup failed during database initialization: {ex}") from ex

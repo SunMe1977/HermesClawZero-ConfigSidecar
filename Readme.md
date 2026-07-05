@@ -69,6 +69,24 @@ COMPOSE_AI_PROVIDER=openrouter docker compose up -d --force-recreate api
 - Docker Desktop
 - [Ollama](https://ollama.com/) (Optional: The setup script can run this for you in Docker)
 
+## Environment Variables
+Required runtime variables (set in `.env`, no secrets in repository):
+
+- `API_KEY`
+- `DB_PASSWORD`
+- One provider key based on your setup: `OPENROUTER_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, or local Ollama
+- Optional provider/runtime selectors: `AI_PROVIDER`, `EMBEDDING_PROVIDER`, `COMPOSE_AI_PROVIDER`
+
+## Security Note
+- Multi-tenant isolation is active via `chat_id` and `scope_id` filtering in capture/search paths.
+- Dashboard access is protected via Basic Auth; change the default dashboard password before public exposure.
+- Keep `.env` local/private and never commit API keys.
+
+## Deployment
+- Standard deployment is Docker Compose (`start.bat` on Windows or `./start.sh` on Linux/macOS).
+- For provider overrides at runtime, set `COMPOSE_AI_PROVIDER` before `docker compose up -d --force-recreate api`.
+- Verify service health at `http://localhost:8010/healthz` and API version/provider state at `http://localhost:8010/version`.
+
 ## Provider Support (No-Ollama Ready)
 The setup options are now wired to real runtime behavior, including non-Ollama deployments.
 
