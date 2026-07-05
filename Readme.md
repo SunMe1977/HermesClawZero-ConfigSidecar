@@ -50,5 +50,5 @@ This project provides a robust CLI (`scripts/memory.py`), a drag-and-drop ingest
 ---
 *Built with ❤️ for AI Agent autonomy.*
 
-[![Hermes Agent](https://cdn.jsdelivr.net/gh/selfhst/icons/png/hermes-agent.png)](https://github.com/nousresearch/hermes-agent)
-[![OpenClaw](https://openclaw.ai/logo.png)](https://openclaw.ai)
+<a href="https://github.com/nousresearch/hermes-agent"><img src="https://cdn.jsdelivr.net/gh/selfhst/icons/png/hermes-agent.png" alt="Hermes Agent" width="30%"></a>
+<a href="https://openclaw.ai"><img src="https://openclaw.ai/logo.png" alt="OpenClaw" width="30%"></a>
