@@ -155,6 +155,14 @@ def sync_messages():
                 if "resp" in locals():
                     response_preview = (resp.text or "").strip().replace("\n", " ")[:500]
 
+                lower_preview = response_preview.lower()
+                if status_code in (401, 403) or "invalid_api_key" in lower_preview or "incorrect api key" in lower_preview:
+                    print(
+                        "[WATCHDOG] Disabled: capture authentication failed (invalid provider key or provider mismatch). "
+                        "Fix .env provider/key settings, then restart start.sh/start.bat."
+                    )
+                    raise SystemExit(0)
+
                 failed_counts[msg_id] = failed_counts.get(msg_id, 0) + 1
                 _save_failed_id_counts(failed_counts)
 

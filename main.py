@@ -260,6 +260,26 @@ def resolve_embedding_provider() -> str:
     )
 
 
+def _raise_embedding_upstream_error(provider: str, response: requests.Response) -> None:
+    status_code = int(response.status_code or 500)
+    body_text = (response.text or "").lower()
+
+    # Keep details concise and avoid echoing upstream payloads that may include sensitive hints.
+    if status_code in {401, 403} or "invalid_api_key" in body_text or "incorrect api key" in body_text:
+        raise HTTPException(
+            status_code=401,
+            detail=f"{provider} embedding authentication failed. Check provider API key and selected AI_PROVIDER/EMBEDDING_PROVIDER.",
+        )
+
+    if status_code == 429:
+        raise HTTPException(status_code=429, detail=f"{provider} embedding rate limit exceeded.")
+
+    if 400 <= status_code < 500:
+        raise HTTPException(status_code=400, detail=f"{provider} embedding request rejected by upstream provider.")
+
+    raise HTTPException(status_code=502, detail=f"{provider} embedding upstream error.")
+
+
 def generate_embedding(text: str) -> list[float]:
     provider = resolve_embedding_provider()
     if provider == "ollama":
@@ -279,7 +299,7 @@ def generate_embedding(text: str) -> list[float]:
             timeout=45,
         )
         if response.status_code >= 400:
-            raise HTTPException(status_code=500, detail=f"OpenAI embedding failed: {response.text}")
+            _raise_embedding_upstream_error("OpenAI", response)
         data = response.json()
         return data["data"][0]["embedding"]
 
@@ -296,7 +316,7 @@ def generate_embedding(text: str) -> list[float]:
             timeout=45,
         )
         if response.status_code >= 400:
-            raise HTTPException(status_code=500, detail=f"OpenRouter embedding failed: {response.text}")
+            _raise_embedding_upstream_error("OpenRouter", response)
         data = response.json()
         return data["data"][0]["embedding"]
 
@@ -314,7 +334,7 @@ def generate_embedding(text: str) -> list[float]:
             timeout=45,
         )
         if response.status_code >= 400:
-            raise HTTPException(status_code=500, detail=f"Gemini embedding failed: {response.text}")
+            _raise_embedding_upstream_error("Gemini", response)
         data = response.json()
         return data["embedding"]["values"]
 
