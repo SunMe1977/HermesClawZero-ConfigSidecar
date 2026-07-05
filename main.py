@@ -1755,4 +1755,4 @@ async def review_optimizer_candidates(limit: int = 25, stale_days: int = 14, con
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8010)

@@ -37,9 +37,9 @@ You can install this project automatically using an AI agent (like OpenClaw or H
 ### Start The Stack
 - **Windows**: Run `start.bat`
 - **Linux/macOS**: Run `./start.sh`
-- **API docs**: `http://localhost:8000/docs`
-- **Health check**: `http://localhost:8000/healthz`
-- **Dashboard**: `http://localhost:8000/dashboard`
+- **API docs**: `http://localhost:8010/docs`
+- **Health check**: `http://localhost:8010/healthz`
+- **Dashboard**: `http://localhost:8010/dashboard`
 
 ---
 ## Requirements
@@ -128,7 +128,7 @@ This project provides a robust CLI (`scripts/memory.py`), a drag-and-drop ingest
 
 ![Dashboard](images/dashboard.png "Dashboard")
 The system includes a secure, interactive web dashboard to view and manage your memory:
-- **URL**: [http://localhost:8000/dashboard](http://localhost:8000/dashboard)
+- **URL**: [http://localhost:8010/dashboard](http://localhost:8010/dashboard)
 - **Login**: Username is `admin`; password is the value you set during setup.
 - **Security note**: Change the default password before exposing the service outside localhost.
 

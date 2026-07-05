@@ -10,7 +10,7 @@ load_dotenv()
 # Configuration
 _default_db = os.path.join(os.getenv("LOCALAPPDATA", ""), "hermes", "state.db")
 DB_PATH = os.getenv("HERMES_DB_PATH", _default_db)
-BASE_URL = os.getenv("MEM_PUBLIC_URL") or os.getenv("OPENCLAW_URL") or "http://localhost:8000"
+BASE_URL = os.getenv("MEM_PUBLIC_URL") or os.getenv("OPENCLAW_URL") or "http://localhost:8010"
 API_URL = BASE_URL.rstrip("/") + "/capture"
 API_KEY = os.getenv("API_KEY") or os.getenv("OPENCLAW_KEY")
 LAST_ID_FILE = pathlib.Path("sync_last_id.txt")

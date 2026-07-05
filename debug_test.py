@@ -1,6 +1,6 @@
 import requests
 import os
-url = "http://localhost:8000/capture"
+url = "http://localhost:8010/capture"
 key = "MYSECRET!!1344"
 text = "debug test"
 resp = requests.post(url, params={"key": key}, json={"text": text})

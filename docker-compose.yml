@@ -33,7 +33,7 @@ services:
     env_file:
       - .env
     ports:
-      - "8000:8000"
+      - "8010:8010"
     environment:
       DB_HOST: db
       DB_PORT: 5432
@@ -45,7 +45,7 @@ services:
       SYNC_DIR: ${SYNC_DIR}
       OLLAMA_HOST: ${OLLAMA_HOST}
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/version', timeout=5)"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8010/version', timeout=5)"]
       interval: 15s
       timeout: 5s
       retries: 8

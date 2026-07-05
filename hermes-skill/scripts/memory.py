@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 
 # Update these to match your HermesClawZero setup
-BASE_URL = os.getenv("MEM_PUBLIC_URL") or os.getenv("OPENCLAW_URL") or "http://localhost:8000"
+BASE_URL = os.getenv("MEM_PUBLIC_URL") or os.getenv("OPENCLAW_URL") or "http://localhost:8010"
 API_KEY = os.getenv("API_KEY") or os.getenv("OPENCLAW_KEY")
 SYNC_DIR = os.getenv("MEM_SYNC_DIR") or os.getenv("OPENCLAW_SYNC_DIR") or str(Path.cwd() / "sync")
 

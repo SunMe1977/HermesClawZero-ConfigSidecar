@@ -14,7 +14,7 @@ When prompted to install this project, the agent must perform the following step
     - If the agent has access to a secure vault (e.g., `.env` provided), use those values.
     - If no vault exists, the agent should ask the user to provide the `OPENCLAW_KEY` and `DB_PASSWORD`.
 4. **Verification**:
-    - The agent should run `curl http://localhost:8000/search?query=&limit=1` to verify the API is responding.
+    - The agent should run `curl http://localhost:8010/search?query=&limit=1` to verify the API is responding.
     - Check that the `sync/`, `inbox/`, and `archive/` directories exist.
 5. **Finalize**: 
     - Report back to the user: "Installation complete, memory pipeline verified."

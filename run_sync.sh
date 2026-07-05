@@ -6,7 +6,7 @@ if [ -f .env ]; then
 	set +a
 fi
 
-export MEM_PUBLIC_URL=${MEM_PUBLIC_URL:-${OPENCLAW_URL:-http://localhost:8000}}
+export MEM_PUBLIC_URL=${MEM_PUBLIC_URL:-${OPENCLAW_URL:-http://localhost:8010}}
 export API_KEY=${API_KEY:-${OPENCLAW_KEY:-""}}
 
 if [ -z "$API_KEY" ]; then

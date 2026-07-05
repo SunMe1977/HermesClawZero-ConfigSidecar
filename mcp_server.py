@@ -7,7 +7,7 @@ from mcp.server.fastmcp import FastMCP
 # Initialize MCP Server
 mcp = FastMCP("HermesClawZero-Memory")
 
-BASE_URL = "http://localhost:8000"
+BASE_URL = "http://localhost:8010"
 API_KEY = os.getenv("API_KEY", "change_me_in_env")
 
 @mcp.tool()

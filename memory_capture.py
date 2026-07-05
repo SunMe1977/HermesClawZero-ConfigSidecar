@@ -7,7 +7,7 @@ if len(sys.argv) < 2:
     sys.exit(1)
 
 text = sys.argv[1]
-base_url = (os.getenv("MEM_PUBLIC_URL") or os.getenv("OPENCLAW_URL") or "http://localhost:8000").rstrip("/")
+base_url = (os.getenv("MEM_PUBLIC_URL") or os.getenv("OPENCLAW_URL") or "http://localhost:8010").rstrip("/")
 api_key = os.getenv("API_KEY") or os.getenv("OPENCLAW_KEY")
 
 resp = requests.post(

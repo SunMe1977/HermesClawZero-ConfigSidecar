@@ -7,7 +7,7 @@ description: Manages long-term semantic memory using HermesClawZero.
 This skill manages long-term semantic memory using the HermesClawZero API. It enables persistent, searchable storage for information, task history, and knowledge base items.
 
 ## API Configuration
-- Base URL: from MEM_PUBLIC_URL (example: http://localhost:8000)
+- Base URL: from MEM_PUBLIC_URL (example: http://localhost:8010)
 - API Key: from API_KEY
 
 ## Tools
