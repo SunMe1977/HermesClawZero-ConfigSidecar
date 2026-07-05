@@ -1,11 +1,15 @@
 import requests
 import sys
 import os
+from pathlib import Path
 
 # Update these to match your HermesClawZero setup
-BASE_URL = os.getenv("MEM_PUBLIC_URL", "http://localhost:8000")
-API_KEY = os.getenv("API_KEY", "change_me_in_env")
-SYNC_DIR = os.getenv("MEM_SYNC_DIR", r"C:\dev\HermesClawZero-ConfigSidecar\sync")
+BASE_URL = os.getenv("MEM_PUBLIC_URL") or os.getenv("OPENCLAW_URL") or "http://localhost:8000"
+API_KEY = os.getenv("API_KEY") or os.getenv("OPENCLAW_KEY")
+SYNC_DIR = os.getenv("MEM_SYNC_DIR") or os.getenv("OPENCLAW_SYNC_DIR") or str(Path.cwd() / "sync")
+
+if not API_KEY:
+    raise RuntimeError("API_KEY is required. Set API_KEY (or OPENCLAW_KEY for compatibility).")
 
 def capture(text):
     url = f"{BASE_URL}/capture"

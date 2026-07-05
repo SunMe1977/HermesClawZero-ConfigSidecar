@@ -30,7 +30,10 @@ services:
       DB_NAME: gbrain
       DB_USER: postgres
       DB_PASSWORD: ${DB_PASSWORD}
-      OLLAMA_HOST: http://ollama:11434
+      API_URL: ${API_URL}
+      API_KEY: ${API_KEY}
+      SYNC_DIR: ${SYNC_DIR}
+      OLLAMA_HOST: ${OLLAMA_HOST}
 
   ollama:
     build:

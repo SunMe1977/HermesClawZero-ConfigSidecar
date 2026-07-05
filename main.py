@@ -1,5 +1,5 @@
 from fastapi import Body, FastAPI, HTTPException, Depends, status
-from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 import psycopg
 import ollama
@@ -7,8 +7,7 @@ import os
 import threading
 import html
 import secrets
-import json
-from datetime import datetime
+import math
 from pydantic import BaseModel
 
 app = FastAPI()
@@ -105,21 +104,6 @@ async def capture(text: str | None = None, body: CaptureRequest | None = Body(de
             conn.commit()
     return {"status": "ok", "page_id": page_id}
 
-def rerank(query: str, items: list[dict]) -> list[dict]:
-    if not items: return items
-    prompt = f"Query: {query}\n\nRe-rank these items by relevance (0-10 score), return JSON: [{{'id': id, 'score': score}}]\n"
-    for item in items:
-        prompt += f"ID: {item['id']}, Content: {item['content'][:200]}\n"
-    
-    resp = client.generate(model="llama3.1:8b", prompt=prompt)
-    try:
-        ranked = json.loads(resp['response'])
-        ranked.sort(key=lambda x: x['score'], reverse=True)
-        id_map = {r['id']: r for r in items}
-        return [id_map[r['id']] for r in ranked if r['id'] in id_map]
-    except:
-        return items
-
 @app.get("/search")
 async def search(query: str = "", limit: int = 5, rerank_results: bool = False):
     if query.strip() == "":
@@ -142,6 +126,21 @@ async def search(query: str = "", limit: int = 5, rerank_results: bool = False):
         results = rerank(query, results)
     
     return results[:limit]
+
+def rerank(query: str, items: list[dict]) -> list[dict]:
+    if not items: return items
+    prompt = f"Query: {query}\n\nRe-rank these items by relevance (0-10 score), return JSON: [{{'id': id, 'score': score}}]\n"
+    for item in items:
+        prompt += f"ID: {item['id']}, Content: {item['content'][:200]}\n"
+    
+    resp = client.generate(model="llama3.1:8b", prompt=prompt)
+    try:
+        ranked = json.loads(resp['response'])
+        ranked.sort(key=lambda x: x['score'], reverse=True)
+        id_map = {r['id']: r for r in items}
+        return [id_map[r['id']] for r in ranked if r['id'] in id_map]
+    except:
+        return items
 
 # ---------------------------------------------------------
 #  ADMIN & DASHBOARD (PROTECTED)
@@ -170,7 +169,7 @@ async def tag_auto(page_id: int):
             row = cur.fetchone()
     if not row: raise HTTPException(status_code=404, detail="Not found")
     
-    prompt = f"Analyze this text and provide 3 comma-separated relevant tags. Only output the tags: {row[0][:500]}"
+    prompt = f"Analyze: '{row[0][:500]}'. Provide 3 comma-separated relevant tags. Only output the tags."
     res = client.generate(model="llama3.1:8b", prompt=prompt)
     tags = res["response"].replace(" ", "").split(",")
     
@@ -199,18 +198,19 @@ async def dashboard(query: str | None = None, page: int = 1):
     
     with connect_db() as conn:
         with conn.cursor() as cur:
+            # Get data
             if query:
-                cur.execute(
-                    "SELECT id, content FROM pages WHERE content ILIKE %s ORDER BY id DESC LIMIT %s OFFSET %s",
-                    (f"%{query}%", per_page, offset)
-                )
+                cur.execute("SELECT id, content FROM pages WHERE content ILIKE %s ORDER BY id DESC LIMIT %s OFFSET %s", (f"%{query}%", per_page, offset))
+                cur.execute("SELECT COUNT(*) FROM pages WHERE content ILIKE %s", (f"%{query}%",))
             else:
-                cur.execute(
-                    "SELECT id, content FROM pages ORDER BY id DESC LIMIT %s OFFSET %s",
-                    (per_page, offset)
-                )
+                cur.execute("SELECT id, content FROM pages ORDER BY id DESC LIMIT %s OFFSET %s", (per_page, offset))
+                cur.execute("SELECT COUNT(*) FROM pages")
+            
             rows = cur.fetchall()
+            total_items = cur.fetchone()[0]
 
+    total_pages = math.ceil(total_items / per_page)
+    
     items = ""
     for r in rows:
         items += f"""
@@ -226,9 +226,12 @@ async def dashboard(query: str | None = None, page: int = 1):
             </form>
         </li>
         """
-
-    prev_link = f'<a href="/dashboard?page={page-1}&query={html.escape(query or "")}">Previous</a>' if page > 1 else ""
-    next_link = f'<a href="/dashboard?page={page+1}&query={html.escape(query or "")}">Next</a>' if len(rows) == per_page else ""
+    
+    # Pagination buttons
+    nav = ""
+    for i in range(1, total_pages + 1):
+        active = "background: #4da6ff;" if i == page else "background: #333;"
+        nav += f'<a href="/dashboard?page={i}&query={html.escape(query or "")}" style="margin: 0 5px; padding: 5px 10px; color: white; text-decoration: none; border-radius: 4px; {active}">{i}</a>'
 
     return f"""
     <html>
@@ -241,8 +244,9 @@ async def dashboard(query: str | None = None, page: int = 1):
           <input type="text" name="query" placeholder="Suche..." value="{html.escape(query or "")}">
           <button type="submit">Search</button>
         </form>
+        <div style="margin: 20px 0;">{nav}</div>
         <ul>{items}</ul>
-        <div style="margin-top: 20px;">{prev_link} {next_link}</div>
+        <div style="margin: 20px 0;">{nav}</div>
       </body>
     </html>
     """
