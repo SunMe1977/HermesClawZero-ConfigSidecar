@@ -10,56 +10,30 @@
 
 The **HermesClawZero-ConfigSidecar** is a modular, automation-first sidecar service designed to add persistent long-term memory to AI agents like Hermes. 
 
-Instead of forcing your agent to manage its own complex database connections, this sidecar handles the heavy lifting of synchronizing session data, chat logs, and configuration context into a searchable vector memory service.
+## Quick Start (One-Click Setup)
+
+No manual configuration needed. Just run the install script for your OS. It will verify Python, Docker, install dependencies, and generate your `.env` file automatically.
+
+### Windows
+1. Double-click **`install_requirements.bat`**.
+2. Run your application using **`start.bat`**.
+
+### Linux/macOS
+1. Run **`bash install_requirements.sh`**.
+2. Run your application using **`bash start.sh`**.
+
+*(After the first run, update the `OPENCLAW_KEY` in the generated `.env` file with your secret.)*
 
 ## The Architecture
 The project follows a decoupled "sidecar" pattern:
 1.  **Capture**: The agent (Hermes) appends session summaries and significant findings to a local `sync/` directory.
-2.  **Sync (The Watchdog)**: A background service (`memory_sync.py`) monitors the `sync/` directory. When new files appear, it automatically ingests them.
+2.  **Sync (The Watchdog)**: A background service (`memory_sync.py`) monitors the `sync/` directory and `inbox/`. When new files appear, it automatically ingests them.
 3.  **Persistence**: The content is posted to a remote or local **OpenClaw** memory service (vector store), making your agent's history queryable via semantic search.
-
-## Key Features
-- **Decoupled Design**: The agent never talks directly to the DB; it writes files to a local directory.
-- **Automation-First**: Setup scripts ensure your environment is configured correctly, including automated `.env` generation.
-- **Resilient**: If the sync service stops, logs just pile up in the `sync/` directory; as soon as you restart the service, it catches up.
-- **Queryable Memory**: Use the provided `memory.py` CLI to perform semantic searches against your agent's historical context.
-
-## Quick Start
-
-### 1. Requirements
-- Python 3.11+
-- Git
-
-### 2. Setup
-Clone the repo and initialize your environment:
-
-```bash
-git clone https://github.com/SunMe1977/HermesClawZero-ConfigSidecar.git
-cd HermesClawZero-ConfigSidecar
-# Run your setup script
-./setup.bat  # Or setup.sh on Linux
-```
-
-### 3. Configuration
-Copy the `.env.example` to `.env` and configure your credentials:
-
-```bash
-OPENCLAW_URL=https://your-memory-service.com
-OPENCLAW_KEY=your-secret-key
-OPENCLAW_SYNC_DIR=./sync/
-```
-
-### 4. Running the Sync Watchdog
-To keep your memory current, ensure the sync service is running:
-
-```bash
-python memory_sync.py
-```
 
 ## Tools
 This project provides a robust CLI (`scripts/memory.py`), a drag-and-drop ingest tool, and maintenance utilities:
 
-- **Ingest**: Drag and drop any file onto `ingest.bat` to automatically move it to `sync/` for processing.
+- **Ingest**: Drag and drop any file onto `ingest.bat` to automatically move it to `inbox/` for processing.
 - **Maintenance**: Run `maintenance.bat` to trigger embedding rebuilds after large data imports.
 - **Capture**: `python scripts/memory.py capture "The user prefers to work in C:/dev/"`
 - **Search**: `python scripts/memory.py search "where does the user work?"`
