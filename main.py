@@ -34,7 +34,11 @@ def get_current_username(credentials: HTTPBasicCredentials = Depends(security)):
 
 @app.middleware("http")
 async def url_api_key(request, call_next):
-    if request.url.path in ["/openapi.json", "/docs", "/docs/swagger-ui.css", "/docs/swagger-ui-bundle.js"]:
+    exempt_paths = [
+        "/openapi.json", "/docs", "/docs/swagger-ui.css", "/docs/swagger-ui-bundle.js",
+        "/dashboard", "/delete", "/export"
+    ]
+    if request.url.path in exempt_paths or request.url.path.startswith("/tag_auto/"):
         return await call_next(request)
 
     key = request.headers.get("x-api-key") or request.query_params.get("key")
@@ -201,13 +205,14 @@ async def dashboard(query: str | None = None, page: int = 1):
             # Get data
             if query:
                 cur.execute("SELECT id, content FROM pages WHERE content ILIKE %s ORDER BY id DESC LIMIT %s OFFSET %s", (f"%{query}%", per_page, offset))
+                rows = cur.fetchall()
                 cur.execute("SELECT COUNT(*) FROM pages WHERE content ILIKE %s", (f"%{query}%",))
+                total_items = cur.fetchone()[0]
             else:
                 cur.execute("SELECT id, content FROM pages ORDER BY id DESC LIMIT %s OFFSET %s", (per_page, offset))
+                rows = cur.fetchall()
                 cur.execute("SELECT COUNT(*) FROM pages")
-            
-            rows = cur.fetchall()
-            total_items = cur.fetchone()[0]
+                total_items = cur.fetchone()[0]
 
     total_pages = math.ceil(total_items / per_page)
     
