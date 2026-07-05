@@ -65,12 +65,14 @@ class WatchdogStatusRequest(BaseModel):
     pending: int
     last_synced_id: int
     latest_source_id: int
+    last_error: str | None = None
 
 
 WATCHDOG_STATUS = {
     "pending": None,
     "last_synced_id": None,
     "latest_source_id": None,
+    "last_error": None,
     "updated_at": None,
 }
 
@@ -1318,6 +1320,7 @@ async def watchdog_status_update(body: WatchdogStatusRequest):
     WATCHDOG_STATUS["pending"] = max(0, int(body.pending))
     WATCHDOG_STATUS["last_synced_id"] = int(body.last_synced_id)
     WATCHDOG_STATUS["latest_source_id"] = int(body.latest_source_id)
+    WATCHDOG_STATUS["last_error"] = (body.last_error or "").strip() or None
     WATCHDOG_STATUS["updated_at"] = int(time.time())
     return {"status": "ok"}
 
@@ -1596,11 +1599,29 @@ async def dashboard(
     watchdog_pending_text = "n/a"
     watchdog_updated_text = "unknown"
     watchdog_pending_value = WATCHDOG_STATUS.get("pending")
+    watchdog_last_synced_id = WATCHDOG_STATUS.get("last_synced_id")
+    watchdog_latest_source_id = WATCHDOG_STATUS.get("latest_source_id")
+    watchdog_last_error = WATCHDOG_STATUS.get("last_error")
     if WATCHDOG_STATUS.get("pending") is not None:
         watchdog_pending_text = str(WATCHDOG_STATUS["pending"])
     if WATCHDOG_STATUS.get("updated_at") is not None:
         age_seconds = max(0, int(time.time()) - int(WATCHDOG_STATUS["updated_at"]))
         watchdog_updated_text = f"{age_seconds}s ago"
+
+    watchdog_progress_text = "last_synced_id=n/a | latest_source_id=n/a"
+    if watchdog_last_synced_id is not None and watchdog_latest_source_id is not None:
+        watchdog_progress_text = (
+            f"last_synced_id={int(watchdog_last_synced_id)} | "
+            f"latest_source_id={int(watchdog_latest_source_id)}"
+        )
+
+    watchdog_error_html = ""
+    if watchdog_last_error:
+        watchdog_error_html = (
+            "<div style='margin: 8px 0 0; padding: 10px; background:#3a1d1d; border:1px solid #8b2b2b; border-radius:6px; color:#fecaca;'>"
+            f"Watchdog last_error: {html.escape(str(watchdog_last_error))}"
+            "</div>"
+        )
 
     watchdog_badge_html = "<span style='color:#9ca3af;'>Watchdog pending: n/a</span>"
     if watchdog_pending_value is not None:
@@ -1703,7 +1724,9 @@ async def dashboard(
       </head>
       <body>
                 <h1>Memory Dashboard (Messages: {total_items} | {watchdog_badge_html})</h1>
-                <p style="margin: 6px 0 14px; color:#bcd;">Watchdog status updated: {watchdog_updated_text}</p>
+                <p style="margin: 6px 0 4px; color:#bcd;">Watchdog status updated: {watchdog_updated_text}</p>
+                <p style="margin: 0 0 14px; color:#9ec8ff;">{watchdog_progress_text}</p>
+                {watchdog_error_html}
                 {optimizer_banner}
             {dry_run_banner}
             {restore_banner}

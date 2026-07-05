@@ -79,7 +79,7 @@ def _api_reachable() -> bool:
         return False
 
 
-def _post_watchdog_status(last_synced_id: int, latest_source_id: int):
+def _post_watchdog_status(last_synced_id: int, latest_source_id: int, last_error: str = ""):
     pending = max(0, latest_source_id - last_synced_id)
     try:
         requests.post(
@@ -89,6 +89,7 @@ def _post_watchdog_status(last_synced_id: int, latest_source_id: int):
                 "pending": pending,
                 "last_synced_id": int(last_synced_id),
                 "latest_source_id": int(latest_source_id),
+                "last_error": (last_error or "")[:500],
             },
             timeout=min(8, REQUEST_TIMEOUT_SECONDS),
         )
@@ -183,7 +184,7 @@ def sync_messages():
                 )
                 resp.raise_for_status()
                 save_last_synced_id(msg_id)
-                _post_watchdog_status(msg_id, latest_source_id)
+                _post_watchdog_status(msg_id, latest_source_id, "")
                 _clear_failed_id(failed_counts, msg_id)
             except requests.HTTPError:
                 status_code = resp.status_code if "resp" in locals() else 0
@@ -193,6 +194,7 @@ def sync_messages():
 
                 lower_preview = response_preview.lower()
                 if status_code in (401, 403) or "invalid_api_key" in lower_preview or "incorrect api key" in lower_preview:
+                    _post_watchdog_status(last_id, latest_source_id, f"auth error on message {msg_id}: {response_preview or 'invalid provider key'}")
                     print(
                         "[WATCHDOG] Disabled: capture authentication failed (invalid provider key or provider mismatch). "
                         "Fix .env provider/key settings, then restart start.sh/start.bat."
@@ -206,6 +208,7 @@ def sync_messages():
                     f"[WATCHDOG] Sync HTTP error on message {msg_id}: status={status_code}, "
                     f"attempt={failed_counts[msg_id]}/{MAX_RETRIES_PER_MESSAGE}, detail={response_preview or 'n/a'}"
                 )
+                _post_watchdog_status(last_id, latest_source_id, f"http {status_code} on message {msg_id}: {response_preview or 'n/a'}")
 
                 if failed_counts[msg_id] >= MAX_RETRIES_PER_MESSAGE:
                     print(
@@ -213,7 +216,7 @@ def sync_messages():
                         "to keep sync progressing."
                     )
                     save_last_synced_id(msg_id)
-                    _post_watchdog_status(msg_id, latest_source_id)
+                    _post_watchdog_status(msg_id, latest_source_id, "")
                     _clear_failed_id(failed_counts, msg_id)
                     continue
 
@@ -221,6 +224,7 @@ def sync_messages():
                 break
             except Exception as e:
                 print(f"[WATCHDOG] Sync error on message {msg_id}: {e}")
+                _post_watchdog_status(last_id, latest_source_id, f"sync error on message {msg_id}: {e}")
                 print("[WATCHDOG] Stopping this cycle to avoid log flood; will retry from last successful ID.")
                 break
     
