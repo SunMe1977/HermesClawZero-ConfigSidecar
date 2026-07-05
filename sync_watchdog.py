@@ -3,11 +3,16 @@ import sqlite3
 import os
 import requests
 import pathlib
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Configuration
-DB_PATH = r"C:\Users\hansj\AppData\Local\hermes\state.db" # Adjusted for standard Windows AppData
-API_URL = os.getenv("MEM_PUBLIC_URL", "https://openclawmemwin.postarmory.com") + "/capture"
-API_KEY = os.getenv("API_KEY", "YOUR_API_KEY_HERE")
+_default_db = os.path.join(os.getenv("LOCALAPPDATA", ""), "hermes", "state.db")
+DB_PATH = os.getenv("HERMES_DB_PATH", _default_db)
+BASE_URL = os.getenv("MEM_PUBLIC_URL") or os.getenv("OPENCLAW_URL") or "http://localhost:8000"
+API_URL = BASE_URL.rstrip("/") + "/capture"
+API_KEY = os.getenv("API_KEY") or os.getenv("OPENCLAW_KEY")
 LAST_ID_FILE = pathlib.Path("sync_last_id.txt")
 
 def get_last_synced_id():
@@ -19,6 +24,10 @@ def save_last_synced_id(msg_id):
     LAST_ID_FILE.write_text(str(msg_id))
 
 def sync_messages():
+    if not API_KEY:
+        print("[WATCHDOG] API_KEY is not set. Skipping sync.")
+        return
+
     if not os.path.exists(DB_PATH):
         print(f"[WATCHDOG] DB not found at {DB_PATH}")
         return
@@ -37,7 +46,7 @@ def sync_messages():
         if content and role in ['user', 'assistant']:
             print(f"[WATCHDOG] Syncing message {msg_id}")
             try:
-                requests.post(API_URL, params={"key": API_KEY}, json={"text": f"[{role}]: {content}"})
+                requests.post(API_URL, params={"key": API_KEY}, json={"text": f"[{role}]: {content}"}, timeout=30)
                 save_last_synced_id(msg_id)
             except Exception as e:
                 print(f"[WATCHDOG] Sync error: {e}")

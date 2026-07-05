@@ -7,8 +7,8 @@ description: Manages long-term semantic memory using HermesClawZero.
 This skill manages long-term semantic memory using the HermesClawZero API. It enables persistent, searchable storage for information, task history, and knowledge base items.
 
 ## API Configuration
-- Base URL: `https://openclawmemwin.postarmory.com`
-- API Key: `YOUR_API_KEY_HERE`
+- Base URL: from MEM_PUBLIC_URL (example: http://localhost:8000)
+- API Key: from API_KEY
 
 ## Tools
 1. **capture(text: str)**: Saves text to memory.

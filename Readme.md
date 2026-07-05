@@ -52,16 +52,31 @@ This project provides a robust CLI (`scripts/memory.py`), a drag-and-drop ingest
 - **Deduplication**: The backend (`main.py`) automatically performs semantic similarity checks to prevent duplicate entries.
 - **Maintenance**: Regularly run `maintenance.bat` if you have imported large batches of data.
 
+## Accessing the Dashboard
+The system includes a secure, interactive web dashboard to view and manage your memory:
+- **URL**: [http://localhost:8000/dashboard](http://localhost:8000/dashboard)
+- **Login**: `admin` / (The password set during setup)
+
+## Automating Tasks (Cron Jobs)
+To ensure your memory stays tidy and you get daily reminders, add these tasks to your system's scheduler (e.g., `crontab -e` on Linux):
+
+```bash
+# Run daily memory highlights at 9:00 AM
+0 9 * * * /usr/bin/python3 /path/to/daily_reminder.py
+
+# Run knowledge gardener (auto-tagging) every Sunday at midnight
+0 0 * * 0 /usr/bin/python3 /path/to/gardener.py
+```
+
 ## Troubleshooting
 - **401 Unauthorized**: Ensure API_KEY in .env matches the server secret.
 - **Sync service not running**: Check if `memory_sync.py` is active in your process monitor.
 - **Log missing from memory**: Verify that the file was written to the `sync/` directory. If it remains there, the watchdog process needs to be restarted.
 
----
 *Built with ❤️ for AI Agent autonomy.*
 
-<a href="https://github.com/nousresearch/hermes-agent"><img src="https://cdn.jsdelivr.net/gh/selfhst/icons/png/hermes-agent.png" alt="Hermes Agent" width="30%"></a>
-<a href="https://openclaw.ai"><img src="https://openclaw.ai/logo.png" alt="OpenClaw" width="30%"></a>
+<a href="https://github.com/openclaw/openclaw"><img src="https://cdn.jsdelivr.net/gh/selfhst/icons/png/hermes-agent.png" alt="Hermes Agent" width="30%"></a>
+<a href="https://github.com/openclaw/openclaw"><img src="https://openclaw.ai/logo.png" alt="OpenClaw" width="30%"></a>
 <a href="https://ollama.com/"><img src="https://ollama.com/public/ollama.png" alt="Ollama" width="30%"></a>
 
 <ul>
