@@ -3,6 +3,10 @@
 cd "$(dirname "$0")"
 
 echo "[START] System Services..."
+
+echo "[START] Cleaning old watchdog processes..."
+pkill -f "python3 sync_watchdog.py" >/dev/null 2>&1 || true
+
 docker compose down
 
 PROVIDER=""
