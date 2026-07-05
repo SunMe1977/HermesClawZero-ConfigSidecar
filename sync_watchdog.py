@@ -66,6 +66,8 @@ MAX_MESSAGES_PER_CYCLE = int(os.getenv("WATCHDOG_MAX_MESSAGES_PER_CYCLE", "50"))
 REQUEST_TIMEOUT_SECONDS = int(os.getenv("WATCHDOG_REQUEST_TIMEOUT_SECONDS", "20"))
 MAX_RETRIES_PER_MESSAGE = int(os.getenv("WATCHDOG_MAX_RETRIES_PER_MESSAGE", "5"))
 STATUS_URL = BASE_URL.rstrip("/") + "/watchdog/status"
+IDLE_LOG_INTERVAL_SECONDS = int(os.getenv("WATCHDOG_IDLE_LOG_INTERVAL_SECONDS", "60"))
+LAST_IDLE_LOG_TS = 0
 
 
 def _api_reachable() -> bool:
@@ -132,6 +134,8 @@ def _clear_failed_id(counts: dict[int, int], msg_id: int):
         _save_failed_id_counts(counts)
 
 def sync_messages():
+    global LAST_IDLE_LOG_TS
+
     if not _api_reachable():
         print(f"[WATCHDOG] API not reachable at {BASE_URL}. Will retry next cycle.")
         return
@@ -155,6 +159,14 @@ def sync_messages():
     rows = cursor.fetchall()
 
     if not rows:
+        now_ts = int(time.time())
+        if now_ts - LAST_IDLE_LOG_TS >= max(1, IDLE_LOG_INTERVAL_SECONDS):
+            pending = max(0, latest_source_id - last_id)
+            print(
+                f"[WATCHDOG] Idle: no new messages (last_synced_id={last_id}, "
+                f"latest_source_id={latest_source_id}, pending={pending})"
+            )
+            LAST_IDLE_LOG_TS = now_ts
         conn.close()
         return
     
