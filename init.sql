@@ -3,6 +3,7 @@ CREATE EXTENSION IF NOT EXISTS vector;
 CREATE TABLE IF NOT EXISTS pages (
   id SERIAL PRIMARY KEY,
   content TEXT NOT NULL,
+  scope_id TEXT,
   memory_type TEXT NOT NULL DEFAULT 'conversation',
   importance REAL NOT NULL DEFAULT 0.5,
   confidence REAL NOT NULL DEFAULT 0.8,
@@ -22,6 +23,7 @@ CREATE TABLE IF NOT EXISTS pages_archive (
   archive_batch_id TEXT,
   page_id INT,
   content TEXT NOT NULL,
+  scope_id TEXT,
   memory_type TEXT,
   importance REAL,
   confidence REAL,
@@ -52,6 +54,7 @@ CREATE TABLE IF NOT EXISTS tags (
 );
 
 CREATE INDEX IF NOT EXISTS idx_pages_memory_type ON pages(memory_type);
+CREATE INDEX IF NOT EXISTS idx_pages_scope_id ON pages(scope_id);
 CREATE INDEX IF NOT EXISTS idx_pages_last_used ON pages(last_used DESC);
 CREATE INDEX IF NOT EXISTS idx_pages_archived ON pages(is_archived);
 CREATE INDEX IF NOT EXISTS idx_pages_fts_content ON pages USING GIN (to_tsvector('english', content));

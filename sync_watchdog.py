@@ -72,6 +72,7 @@ BACKLOG_SLEEP_SECONDS = float(os.getenv("WATCHDOG_BACKLOG_SLEEP_SECONDS", "0.2")
 IDLE_SLEEP_SECONDS = float(os.getenv("WATCHDOG_IDLE_SLEEP_SECONDS", "10"))
 LAST_IDLE_LOG_TS = 0
 SESSION = requests.Session()
+HAS_CHAT_ID_COLUMN: bool | None = None
 
 
 def _api_reachable() -> bool:
@@ -138,6 +139,19 @@ def _clear_failed_id(counts: dict[int, int], msg_id: int):
         counts.pop(msg_id, None)
         _save_failed_id_counts(counts)
 
+
+def _messages_has_chat_id_column(cursor: sqlite3.Cursor) -> bool:
+    global HAS_CHAT_ID_COLUMN
+    if HAS_CHAT_ID_COLUMN is not None:
+        return HAS_CHAT_ID_COLUMN
+    try:
+        cursor.execute("PRAGMA table_info(messages)")
+        columns = cursor.fetchall()
+        HAS_CHAT_ID_COLUMN = any((str(col[1]).lower() == "chat_id") for col in columns)
+    except Exception:
+        HAS_CHAT_ID_COLUMN = False
+    return HAS_CHAT_ID_COLUMN
+
 def sync_messages() -> tuple[bool, int]:
     global LAST_IDLE_LOG_TS
 
@@ -157,10 +171,16 @@ def sync_messages() -> tuple[bool, int]:
     _post_watchdog_status(last_id, latest_source_id)
     
     # Query for new messages
-    cursor.execute(
-        "SELECT id, content, role FROM messages WHERE id > ? ORDER BY id ASC LIMIT ?",
-        (last_id, MAX_MESSAGES_PER_CYCLE),
-    )
+    if _messages_has_chat_id_column(cursor):
+        cursor.execute(
+            "SELECT id, content, role, chat_id FROM messages WHERE id > ? ORDER BY id ASC LIMIT ?",
+            (last_id, MAX_MESSAGES_PER_CYCLE),
+        )
+    else:
+        cursor.execute(
+            "SELECT id, content, role FROM messages WHERE id > ? ORDER BY id ASC LIMIT ?",
+            (last_id, MAX_MESSAGES_PER_CYCLE),
+        )
     rows = cursor.fetchall()
 
     if not rows:
@@ -179,14 +199,20 @@ def sync_messages() -> tuple[bool, int]:
     sync_batch = []
     
     for row in rows:
-        msg_id, content, role = row
+        if len(row) >= 4:
+            msg_id, content, role, chat_id = row
+            scope_id = f"telegram:{chat_id}" if chat_id is not None else None
+        else:
+            msg_id, content, role = row
+            scope_id = None
+
         if not content or role not in ['user', 'assistant']:
             # Advance cursor for non-syncable rows so the watchdog cannot stall forever.
             save_last_synced_id(msg_id)
             _post_watchdog_status(msg_id, latest_source_id, "")
             processed_count += 1
             continue
-        sync_batch.append((msg_id, role, content))
+        sync_batch.append((msg_id, role, content, scope_id))
 
     if not sync_batch:
         conn.close()
@@ -202,8 +228,8 @@ def sync_messages() -> tuple[bool, int]:
             json={
                 "skip_dedupe": True,
                 "items": [
-                    {"msg_id": int(msg_id), "text": f"[{role}]: {content}"}
-                    for msg_id, role, content in sync_batch
+                    {"msg_id": int(msg_id), "text": f"[{role}]: {content}", "scope_id": scope_id}
+                    for msg_id, role, content, scope_id in sync_batch
                 ],
             },
             timeout=max(REQUEST_TIMEOUT_SECONDS, 60),
@@ -212,7 +238,7 @@ def sync_messages() -> tuple[bool, int]:
 
         save_last_synced_id(last_msg_id)
         _post_watchdog_status(last_msg_id, latest_source_id, "")
-        for msg_id, _, _ in sync_batch:
+        for msg_id, _, _, _ in sync_batch:
             _clear_failed_id(failed_counts, msg_id)
         processed_count += len(sync_batch)
     except requests.HTTPError:
