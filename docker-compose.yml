@@ -1,0 +1,35 @@
+services:
+  db:
+    build:
+      context: .
+      dockerfile: Dockerfile.postgres
+    container_name: gbrain-postgres
+    ports:
+      - "5666:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: JH!§$2121
+      POSTGRES_DB: gbrain
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    depends_on:
+      - db
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: gbrain
+      DB_USER: postgres
+      DB_PASSWORD: "JH!§$2121"
+      OLLAMA_HOST: http://host.docker.internal:11434
+
+volumes:
+  pgdata:

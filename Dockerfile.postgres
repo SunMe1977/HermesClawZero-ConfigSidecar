@@ -1,0 +1,14 @@
+# Basis: fertiges pgvector-Image
+FROM ankane/pgvector:latest
+
+# Environment-Variablen für Postgres
+ENV POSTGRES_USER=postgres
+ENV POSTGRES_PASSWORD=JH!§$2121
+ENV POSTGRES_DB=gbrain
+
+# Port
+EXPOSE 5432
+
+# Optional: eigenes Init-Script für Tabellen
+# Alles, was in /docker-entrypoint-initdb.d liegt, wird beim ersten Start ausgeführt
+COPY init.sql /docker-entrypoint-initdb.d/init.sql
