@@ -34,7 +34,7 @@ fi
 # Load current .env for defaults
 if [ -f .env ]; then export $(grep -v '^#' .env | xargs); fi
 
-read -p "Enter OpenClaw API Key [${OPENCLAW_KEY:-YOUR_KEY_HERE}]: " INPUT_OPENCLAW_KEY
+read -p "Enter API Key [${API_KEY:-YOUR_KEY_HERE}]: " INPUT_API_KEY
 read -p "Enter Dashboard Password [${DASHBOARD_PASSWORD:-admin}]: " INPUT_DASHBOARD_PASS
 read -p "Enter Database Password [${DB_PASSWORD:-}]: " INPUT_DB_PASSWORD
 
@@ -42,9 +42,9 @@ read -p "Enter Database Password [${DB_PASSWORD:-}]: " INPUT_DB_PASSWORD
 cat <<EOF > .env
 AI_PROVIDER=$PROVIDER
 $KEY_VAR=$KEY
-OPENCLAW_URL=https://openclawmemwin.postarmory.com
-OPENCLAW_KEY=${INPUT_OPENCLAW_KEY:-${OPENCLAW_KEY:-"YOUR_KEY_HERE"}}
-OPENCLAW_SYNC_DIR=$(pwd)/sync
+API_URL=https://openclawmemwin.postarmory.com
+API_KEY=${INPUT_API_KEY:-${API_KEY:-"YOUR_KEY_HERE"}}
+SYNC_DIR=$(pwd)/sync
 DB_PASSWORD=${INPUT_DB_PASSWORD:-$DB_PASSWORD}
 DASHBOARD_PASSWORD=${INPUT_DASHBOARD_PASS:-${DASHBOARD_PASSWORD:-admin}}
 OLLAMA_HOST=http://host.docker.internal:11435

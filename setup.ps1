@@ -48,16 +48,16 @@ if ($provider_key_name) {
 
 # 4. Save Config
 $syncDir = (Get-Location).Path + '\sync'
-$OPENCLAW_KEY = Get-Input "OPENCLAW_KEY" "Enter OpenClaw API Key" "YOUR_KEY_HERE"
+$API_KEY = Get-Input "API_KEY" "Enter API Key" "YOUR_KEY_HERE"
 $DASHBOARD_PASS = Get-Input "DASHBOARD_PASSWORD" "Enter Dashboard Password (for web login)" "admin"
 $DB_PASSWORD = Get-Input "DB_PASSWORD" "Enter Database Password" ""
 
 $content = @"
 AI_PROVIDER=$provider
 $provider_key_name=$key
-OPENCLAW_URL=https://openclawmemwin.postarmory.com
-OPENCLAW_KEY=$OPENCLAW_KEY
-OPENCLAW_SYNC_DIR=$syncDir
+API_URL=https://openclawmemwin.postarmory.com
+API_KEY=$API_KEY
+SYNC_DIR=$syncDir
 DB_PASSWORD=$DB_PASSWORD
 DASHBOARD_PASSWORD=$DASHBOARD_PASS
 OLLAMA_HOST=http://host.docker.internal:11435
