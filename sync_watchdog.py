@@ -32,10 +32,18 @@ _load_env_file_fallback()
 def _default_hermes_db_path() -> str:
     local_appdata = os.getenv("LOCALAPPDATA", "").strip()
     if local_appdata:
-        return os.path.join(local_appdata, "hermes", "state.db")
+        windows_candidates = [
+            os.path.join(local_appdata, "hermes", "state.db"),
+            os.path.join(os.path.expanduser("~"), ".hermes", "state.db"),
+        ]
+        for candidate in windows_candidates:
+            if os.path.exists(candidate):
+                return candidate
+        return windows_candidates[0]
 
     home = os.path.expanduser("~")
     linux_candidates = [
+        os.path.join(home, ".hermes", "state.db"),
         os.path.join(home, ".local", "share", "hermes", "state.db"),
         os.path.join(home, "hermes", "state.db"),
     ]

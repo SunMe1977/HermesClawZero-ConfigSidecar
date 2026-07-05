@@ -123,6 +123,34 @@ $AUTO_UPDATE_BRANCH = Get-Input "AUTO_UPDATE_BRANCH" "Git branch for updates" $d
 $UPDATE_REPO_DIR = Get-Input "UPDATE_REPO_DIR" "Repo path used by updater" $detectedRepoDir
 $UPDATE_RESTART_COMMAND = Get-Input "UPDATE_RESTART_COMMAND" "Restart command after update (optional)" ""
 
+$detectedHermesDb = if ($config.ContainsKey("HERMES_DB_PATH")) { $config["HERMES_DB_PATH"] } else { "" }
+if ([string]::IsNullOrWhiteSpace($detectedHermesDb)) {
+    $candidatePaths = @(
+        (Join-Path $env:USERPROFILE ".hermes\state.db"),
+        (Join-Path $env:LOCALAPPDATA "hermes\state.db"),
+        (Join-Path $env:USERPROFILE "hermes\state.db")
+    )
+    foreach ($p in $candidatePaths) {
+        if (Test-Path $p) {
+            $detectedHermesDb = $p
+            break
+        }
+    }
+}
+
+if ([string]::IsNullOrWhiteSpace($detectedHermesDb)) {
+    Write-Host "[SETUP] Searching for Hermes state.db (this can take a while)..." -ForegroundColor Yellow
+    try {
+        $found = Get-ChildItem -Path $env:USERPROFILE -Filter state.db -Recurse -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -match 'hermes' } |
+            Select-Object -First 1
+        if ($found) { $detectedHermesDb = $found.FullName }
+    }
+    catch {}
+}
+
+$HERMES_DB_PATH = Get-Input "HERMES_DB_PATH" "Hermes DB path for watchdog (optional)" $detectedHermesDb
+
 $lines = @(
     "AI_PROVIDER=$provider"
     "EMBEDDING_PROVIDER=$EMBEDDING_PROVIDER"
@@ -149,6 +177,7 @@ $lines += @(
     "AUTO_UPDATE_BRANCH=$AUTO_UPDATE_BRANCH"
     "UPDATE_REPO_DIR=$UPDATE_REPO_DIR"
     "UPDATE_RESTART_COMMAND=$UPDATE_RESTART_COMMAND"
+    "HERMES_DB_PATH=$HERMES_DB_PATH"
     "OPENAI_EMBED_MODEL=$(Get-Input 'OPENAI_EMBED_MODEL' 'OpenAI embedding model' 'text-embedding-3-small')"
     "OPENROUTER_EMBED_MODEL=$(Get-Input 'OPENROUTER_EMBED_MODEL' 'OpenRouter embedding model' 'text-embedding-3-small')"
     "GEMINI_EMBED_MODEL=$(Get-Input 'GEMINI_EMBED_MODEL' 'Gemini embedding model' 'models/text-embedding-004')"

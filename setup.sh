@@ -112,6 +112,29 @@ read -p "Git branch for updates [${AUTO_UPDATE_BRANCH:-$DETECTED_BRANCH}]: " INP
 read -p "Repo path for updater [${UPDATE_REPO_DIR:-$DETECTED_REPO_DIR}]: " INPUT_UPDATE_REPO_DIR
 read -p "Restart command after update (optional) [${UPDATE_RESTART_COMMAND:-}]: " INPUT_UPDATE_RESTART_COMMAND
 
+DETECTED_HERMES_DB="${HERMES_DB_PATH:-}"
+if [ -z "$DETECTED_HERMES_DB" ]; then
+    CANDIDATE_PATHS=(
+        "$HOME/.hermes/state.db"
+        "$HOME/.local/share/hermes/state.db"
+        "$HOME/hermes/state.db"
+    )
+    for p in "${CANDIDATE_PATHS[@]}"; do
+        if [ -f "$p" ]; then
+            DETECTED_HERMES_DB="$p"
+            break
+        fi
+    done
+fi
+
+if [ -z "$DETECTED_HERMES_DB" ]; then
+    echo "[SETUP] Searching for Hermes state.db (this can take a while)..."
+    DETECTED_HERMES_DB="$(find / -type f -name state.db 2>/dev/null | grep -i hermes | head -n 1)"
+fi
+
+read -p "Hermes DB path for watchdog (optional) [${DETECTED_HERMES_DB:-}]: " INPUT_HERMES_DB_PATH
+FINAL_HERMES_DB_PATH="${INPUT_HERMES_DB_PATH:-$DETECTED_HERMES_DB}"
+
 # 4. Write .env
 read -p "Enter Telegram Bot Token [${TELEGRAM_BOT_TOKEN:-}]: " INPUT_TELEGRAM_TOKEN
 read -p "Enter Telegram Chat ID [${TELEGRAM_CHAT_ID:-}]: " INPUT_TELEGRAM_CHAT_ID
@@ -135,6 +158,7 @@ AUTO_UPDATE_REMOTE=${INPUT_AUTO_UPDATE_REMOTE:-${AUTO_UPDATE_REMOTE:-origin}}
 AUTO_UPDATE_BRANCH=${INPUT_AUTO_UPDATE_BRANCH:-${AUTO_UPDATE_BRANCH:-main}}
 UPDATE_REPO_DIR=${INPUT_UPDATE_REPO_DIR:-${UPDATE_REPO_DIR:-$(pwd)}}
 UPDATE_RESTART_COMMAND=${INPUT_UPDATE_RESTART_COMMAND:-$UPDATE_RESTART_COMMAND}
+HERMES_DB_PATH=${FINAL_HERMES_DB_PATH}
 OPENAI_EMBED_MODEL=${OPENAI_EMBED_MODEL:-text-embedding-3-small}
 OPENROUTER_EMBED_MODEL=${OPENROUTER_EMBED_MODEL:-text-embedding-3-small}
 GEMINI_EMBED_MODEL=${GEMINI_EMBED_MODEL:-models/text-embedding-004}
