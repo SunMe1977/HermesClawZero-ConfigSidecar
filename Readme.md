@@ -49,12 +49,18 @@ python memory_sync.py
 ```
 
 ## Tools
-This project provides a robust CLI (`scripts/memory.py`) and a simple drag-and-drop ingest tool for interacting with the service:
+This project provides a robust CLI (`scripts/memory.py`), a drag-and-drop ingest tool, and maintenance utilities:
 
-- **Ingest**: Drag and drop any file onto `ingest.bat` to automatically copy it to the `sync/` directory.
+- **Ingest**: Drag and drop any file onto `ingest.bat` to automatically move it to `sync/` for processing.
+- **Maintenance**: Run `maintenance.bat` to trigger embedding rebuilds after large data imports.
 - **Capture**: `python scripts/memory.py capture "The user prefers to work in C:/dev/"`
 - **Search**: `python scripts/memory.py search "where does the user work?"`
 - **Autosave**: `python scripts/memory.py autosave "content..." "filename.txt"`
+
+## Big Data Best Practices
+- **Archive**: All successfully ingested files are automatically moved to the `archive/` folder.
+- **Deduplication**: The backend (`main.py`) automatically performs semantic similarity checks to prevent duplicate entries.
+- **Maintenance**: Regularly run `maintenance.bat` if you have imported large batches of data.
 
 ## Troubleshooting
 - **401 Unauthorized**: Ensure your `OPENCLAW_KEY` in `.env` matches the server secret.
