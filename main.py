@@ -1,5 +1,5 @@
-from fastapi import Body, FastAPI, HTTPException, Depends, status
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi import Body, FastAPI, HTTPException, Depends, status, UploadFile, File
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 import psycopg
 import ollama
@@ -8,6 +8,8 @@ import threading
 import html
 import secrets
 import math
+import shutil
+import whisper
 from pydantic import BaseModel
 
 app = FastAPI()
@@ -16,6 +18,9 @@ app = FastAPI()
 security = HTTPBasic()
 API_KEY = os.getenv("API_KEY") or os.getenv("OPENCLAW_KEY")
 DASHBOARD_PASSWORD = os.getenv("DASHBOARD_PASSWORD", "admin")
+
+# AI Setup
+whisper_model = whisper.load_model("base")
 
 class CaptureRequest(BaseModel):
     text: str
@@ -34,11 +39,7 @@ def get_current_username(credentials: HTTPBasicCredentials = Depends(security)):
 
 @app.middleware("http")
 async def url_api_key(request, call_next):
-    exempt_paths = [
-        "/openapi.json", "/docs", "/docs/swagger-ui.css", "/docs/swagger-ui-bundle.js",
-        "/dashboard", "/delete", "/export"
-    ]
-    if request.url.path in exempt_paths or request.url.path.startswith("/tag_auto/"):
+    if request.url.path in ["/openapi.json", "/docs", "/docs/swagger-ui.css", "/docs/swagger-ui-bundle.js"]:
         return await call_next(request)
 
     key = request.headers.get("x-api-key") or request.query_params.get("key")
@@ -107,6 +108,16 @@ async def capture(text: str | None = None, body: CaptureRequest | None = Body(de
             cur.execute("INSERT INTO embeddings (page_id, embedding) VALUES (%s, %s::vector)", (page_id, emb_str))
             conn.commit()
     return {"status": "ok", "page_id": page_id}
+
+@app.post("/transcribe")
+async def transcribe(file: UploadFile = File(...)):
+    temp_path = f"/tmp/{file.filename}"
+    with open(temp_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+    
+    result = whisper_model.transcribe(temp_path)
+    os.remove(temp_path)
+    return {"text": result["text"]}
 
 @app.get("/search")
 async def search(query: str = "", limit: int = 5, rerank_results: bool = False):
@@ -202,17 +213,15 @@ async def dashboard(query: str | None = None, page: int = 1):
     
     with connect_db() as conn:
         with conn.cursor() as cur:
-            # Get data
             if query:
                 cur.execute("SELECT id, content FROM pages WHERE content ILIKE %s ORDER BY id DESC LIMIT %s OFFSET %s", (f"%{query}%", per_page, offset))
-                rows = cur.fetchall()
                 cur.execute("SELECT COUNT(*) FROM pages WHERE content ILIKE %s", (f"%{query}%",))
-                total_items = cur.fetchone()[0]
             else:
                 cur.execute("SELECT id, content FROM pages ORDER BY id DESC LIMIT %s OFFSET %s", (per_page, offset))
-                rows = cur.fetchall()
                 cur.execute("SELECT COUNT(*) FROM pages")
-                total_items = cur.fetchone()[0]
+            
+            rows = cur.fetchall()
+            total_items = cur.fetchone()[0]
 
     total_pages = math.ceil(total_items / per_page)
     
@@ -232,7 +241,6 @@ async def dashboard(query: str | None = None, page: int = 1):
         </li>
         """
     
-    # Pagination buttons
     nav = ""
     for i in range(1, total_pages + 1):
         active = "background: #4da6ff;" if i == page else "background: #333;"

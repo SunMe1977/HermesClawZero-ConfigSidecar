@@ -6,3 +6,5 @@ requests
 psutil
 python-dotenv
 mcp
+openai-whisper
+ffmpeg-python
