@@ -15,7 +15,7 @@ All notable changes to this project are documented in this file.
 ### Changed
 - `setup.sh` now loads `.env` defaults with robust parsing (handles spaces and special characters).
 - `setup.ps1` and `setup.sh` now auto-detect updater git remote, branch, and repository path.
-- `/transcribe` now requires API key auth and uses safe temporary file handling.
+- API key auth handling was hardened for protected endpoints.
 - Dashboard/API auth path handling hardened for `/dashboard` and trailing-slash variants.
 - README architecture `<picture>` now includes PNG fallback.
 

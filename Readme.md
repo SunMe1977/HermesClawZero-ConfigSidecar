@@ -110,6 +110,7 @@ Set these in `.env` (never commit secrets):
 - Dashboard is protected by Basic Auth.
 - API routes use `x-api-key`/`?key=` checks.
 - Keep `.env` private and rotate keys if exposed.
+- **Rate Limiting**: The system uses a custom internal middleware for rate limiting (no external slowapi dependency) to keep the footprint lightweight. Limits are set to 30 requests/minute for /capture and 60 requests/minute for /search. Returning HTTP 429 on exceeding the limit.
 
 ## Deployment
 Standard deployment uses Docker Compose (`start.bat` or `./start.sh`).

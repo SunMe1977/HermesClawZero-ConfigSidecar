@@ -1,7 +1,7 @@
-from fastapi import Body, FastAPI, HTTPException, Depends, status, UploadFile, File, Form, Request, Response
+from fastapi import Body, FastAPI, HTTPException, Depends, status, Form, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
-import psycopg
+from psycopg_pool import ConnectionPool
 import ollama
 import requests
 import os
@@ -9,20 +9,25 @@ import threading
 import html
 import secrets
 import math
-import shutil
 import time
 import json
 import base64
 import hashlib
 import hmac
+import logging
 from urllib.parse import quote_plus
 import uuid
 import subprocess
-import tempfile
 from pathlib import Path
-from collections import defaultdict, deque
-import whisper
+from cachetools import TTLCache
+from collections import deque
 from pydantic import BaseModel
+
+logging.basicConfig(
+    level=os.getenv("LOG_LEVEL", "INFO").upper(),
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
+logger = logging.getLogger("hermesclaw")
 
 app = FastAPI()
 
@@ -49,9 +54,6 @@ AUTO_UPDATE_ENABLED = env_bool("AUTO_UPDATE_ENABLED", False)
 AUTO_UPDATE_APPLY = env_bool("AUTO_UPDATE_APPLY", False)
 AUTO_UPDATE_INTERVAL_SECONDS = max(60, int(os.getenv("AUTO_UPDATE_INTERVAL_MINUTES", "60")) * 60)
 UPDATE_RESTART_COMMAND = os.getenv("UPDATE_RESTART_COMMAND", "")
-
-# AI Setup
-whisper_model = whisper.load_model("base")
 
 class CaptureRequest(BaseModel):
     text: str
@@ -91,6 +93,15 @@ WATCHDOG_STATUS = {
     "updated_at": None,
 }
 
+# Sync worker liveness, updated by the supervised sync thread.
+SYNC_LIVENESS = {
+    "running": False,
+    "last_success_ts": None,
+    "last_error_ts": None,
+    "last_error": None,
+    "restart_count": 0,
+}
+
 DASHBOARD_SCOPE_ALL = "all"
 DASHBOARD_SCOPE_UNSCOPED = "__unscoped__"
 SCOPE_LABELS_JSON = (os.getenv("SCOPE_LABELS_JSON", "") or "").strip()
@@ -120,7 +131,8 @@ RATE_LIMIT_RULES = {
     "/capture": (30, 60),
     "/search": (60, 60),
 }
-RATE_LIMIT_STATE: dict[tuple[str, str], deque[float]] = defaultdict(deque)
+# TTLCache auto-evicts stale IP buckets so unbounded client IPs cannot leak memory.
+RATE_LIMIT_STATE: TTLCache = TTLCache(maxsize=int(os.getenv("RATE_LIMIT_MAX_IPS", "10000")), ttl=60)
 RATE_LIMIT_LOCK = threading.Lock()
 
 OPENROUTER_MAX_RETRIES = 3
@@ -220,7 +232,10 @@ def _is_rate_limited(path: str, ip: str, now_ts: float) -> tuple[bool, int]:
     max_requests, window_seconds = rule
     key = (path, ip)
     with RATE_LIMIT_LOCK:
-        bucket = RATE_LIMIT_STATE[key]
+        bucket = RATE_LIMIT_STATE.get(key)
+        if bucket is None:
+            bucket = deque()
+            RATE_LIMIT_STATE[key] = bucket
         cutoff = now_ts - window_seconds
         while bucket and bucket[0] <= cutoff:
             bucket.popleft()
@@ -293,10 +308,31 @@ async def healthz():
         db_ok = False
         db_error = str(ex)
 
+    sync_snapshot = {
+        "running": bool(SYNC_LIVENESS.get("running")),
+        "last_success_ts": SYNC_LIVENESS.get("last_success_ts"),
+        "last_error_ts": SYNC_LIVENESS.get("last_error_ts"),
+        "last_error": SYNC_LIVENESS.get("last_error"),
+        "restart_count": int(SYNC_LIVENESS.get("restart_count") or 0),
+    }
+
+    # memory_sync LIVENESS is available once the sync module has been loaded.
+    sync_ingest = None
+    try:
+        import memory_sync
+        if hasattr(memory_sync, "LIVENESS"):
+            sync_ingest = dict(memory_sync.LIVENESS)
+    except Exception:
+        sync_ingest = None
+
     status_text = "ok" if db_ok else "degraded"
     payload = {
         "status": status_text,
         "database": "ok" if db_ok else "error",
+        "sync": {
+            "worker": sync_snapshot,
+            "ingest": sync_ingest,
+        },
     }
     if db_error:
         payload["database_error"] = db_error
@@ -312,11 +348,43 @@ DB_NAME = os.getenv("DB_NAME", "gbrain")
 DB_USER = os.getenv("DB_USER", "postgres")
 DB_PASSWORD = os.getenv("DB_PASSWORD")
 
+_db_pool: ConnectionPool | None = None
+_db_pool_lock = threading.Lock()
+
+
+def get_db_pool() -> ConnectionPool:
+    global _db_pool
+    if _db_pool is not None:
+        return _db_pool
+    with _db_pool_lock:
+        if _db_pool is None:
+            conninfo = (
+                f"host={DB_HOST} port={DB_PORT} dbname={DB_NAME} "
+                f"user={DB_USER} password={DB_PASSWORD}"
+            )
+            _db_pool = ConnectionPool(
+                conninfo=conninfo,
+                min_size=int(os.getenv("DB_POOL_MIN", "2")),
+                max_size=int(os.getenv("DB_POOL_MAX", "10")),
+                timeout=float(os.getenv("DB_POOL_TIMEOUT", "30")),
+            )
+            logger.info(
+                "DB connection pool created (min=%s max=%s)",
+                os.getenv("DB_POOL_MIN", "2"),
+                os.getenv("DB_POOL_MAX", "10"),
+            )
+    return _db_pool
+
+
+def close_db_pool() -> None:
+    global _db_pool
+    if _db_pool is not None:
+        _db_pool.close()
+        _db_pool = None
+
 
 def connect_db():
-    conn_kwargs = {"host": DB_HOST, "port": DB_PORT, "dbname": DB_NAME, "user": DB_USER, "password": DB_PASSWORD}
-    try: return psycopg.connect(**conn_kwargs)
-    except psycopg.OperationalError: raise
+    return get_db_pool().connection()
 
 
 def embedding_to_pgvector_literal(embedding: list[float]) -> str:
@@ -411,7 +479,7 @@ def _openrouter_embeddings_request(payload: dict, timeout_seconds: int) -> dict:
                 return response.json()
 
             if response.status_code == 429:
-                print(f"[OPENROUTER] rate-limited on attempt {attempt}/{OPENROUTER_MAX_RETRIES}")
+                logger.warning("[OPENROUTER] rate-limited on attempt %s/%s", attempt, OPENROUTER_MAX_RETRIES)
 
             if response.status_code in {429, 500, 502, 503, 504}:
                 last_error = f"status={response.status_code}"
@@ -428,7 +496,7 @@ def _openrouter_embeddings_request(payload: dict, timeout_seconds: int) -> dict:
                 continue
             break
 
-    print(f"[OPENROUTER] embedding retries exhausted: {last_error or 'unknown error'}")
+    logger.warning("[OPENROUTER] embedding retries exhausted: %s", last_error or 'unknown error')
     raise HTTPException(status_code=503, detail=OPENROUTER_DEGRADED_MESSAGE)
 
 
@@ -631,9 +699,11 @@ def ensure_embeddings_schema(expected_dim: int) -> None:
             expected_type = f"vector({expected_dim})"
 
             if current_type != expected_type:
-                print(
-                    f"[SCHEMA] embeddings.embedding type mismatch ({current_type or 'unknown'} -> {expected_type}). "
-                    "Recreating embeddings table for provider alignment."
+                logger.warning(
+                    "[SCHEMA] embeddings.embedding type mismatch (%s -> %s). "
+                    "Recreating embeddings table for provider alignment.",
+                    current_type or 'unknown',
+                    expected_type,
                 )
                 cur.execute("DROP TABLE IF EXISTS embeddings")
                 cur.execute(
@@ -1446,9 +1516,9 @@ def auto_update_loop() -> None:
                 status = get_update_status(fetch_remote=True)
                 if status.get("available"):
                     result = run_update()
-                    print(f"[UPDATE] auto-apply result: {result.get('updated')}")
+                    logger.info("[UPDATE] auto-apply result: %s", result.get('updated'))
         except Exception as ex:
-            print(f"[UPDATE] loop error: {ex}")
+            logger.exception("[UPDATE] loop error: %s", ex)
         time.sleep(AUTO_UPDATE_INTERVAL_SECONDS)
 
 
@@ -1456,9 +1526,12 @@ def decay_loop() -> None:
     while True:
         try:
             stats = run_decay_and_archive_once()
-            print(f"[OPTIMIZER] decay={stats['decayed']} archived={stats['archived']} deleted={stats['deleted']}")
+            logger.info(
+                "[OPTIMIZER] decay=%s archived=%s deleted=%s",
+                stats['decayed'], stats['archived'], stats['deleted'],
+            )
         except Exception as ex:
-            print(f"[OPTIMIZER] error: {ex}")
+            logger.exception("[OPTIMIZER] error: %s", ex)
         time.sleep(DECAY_INTERVAL_SECONDS)
 
 
@@ -1690,22 +1763,6 @@ async def capture_batch(body: BatchCaptureRequest):
         "msg_ids": inserted_msg_ids,
     }
 
-@app.post("/transcribe", dependencies=[Depends(require_api_key)])
-async def transcribe(file: UploadFile = File(...)):
-    suffix = Path(file.filename or "audio").suffix
-    temp_path = ""
-    try:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp_file:
-            temp_path = temp_file.name
-            shutil.copyfileobj(file.file, temp_file)
-
-        result = whisper_model.transcribe(temp_path)
-        return {"text": result["text"]}
-    finally:
-        if temp_path and os.path.exists(temp_path):
-            os.remove(temp_path)
-
-
 @app.post("/watchdog/status", dependencies=[Depends(require_api_key)])
 async def watchdog_status_update(body: WatchdogStatusRequest):
     WATCHDOG_STATUS["pending"] = max(0, int(body.pending))
@@ -1903,7 +1960,7 @@ def rerank(query: str, items: list[dict]) -> list[dict]:
         ranked.sort(key=lambda x: x['score'], reverse=True)
         id_map = {r['id']: r for r in items}
         return [id_map[r['id']] for r in ranked if r['id'] in id_map]
-    except:
+    except (json.JSONDecodeError, KeyError, TypeError):
         return items
 
 # ---------------------------------------------------------
@@ -2334,8 +2391,26 @@ async def dashboard(
 #  STARTUP & RUN
 # ---------------------------------------------------------
 def start_sync():
+    threading.Thread(target=_supervised_sync_loop, daemon=True).start()
+
+
+def _supervised_sync_loop() -> None:
+    """Run memory_sync.run_sync with crash detection and automatic restart."""
     import memory_sync
-    threading.Thread(target=memory_sync.run_sync, daemon=True).start()
+    global SYNC_LIVENESS
+    while True:
+        SYNC_LIVENESS["running"] = True
+        try:
+            memory_sync.run_sync()
+        except Exception as ex:
+            logger.exception("[SYNC] worker crashed, will restart: %s", ex)
+            SYNC_LIVENESS["last_error_ts"] = int(time.time())
+            SYNC_LIVENESS["last_error"] = str(ex)
+        finally:
+            SYNC_LIVENESS["running"] = False
+        SYNC_LIVENESS["restart_count"] = int(SYNC_LIVENESS.get("restart_count") or 0) + 1
+        logger.warning("[SYNC] restarting sync worker in 5s (restart #%s)", SYNC_LIVENESS["restart_count"])
+        time.sleep(5)
 
 
 def start_decay_optimizer():
@@ -2364,6 +2439,11 @@ def startup_event():
     start_decay_optimizer()
     start_auto_update_worker()
     start_sync()
+
+
+@app.on_event("shutdown")
+def shutdown_event():
+    close_db_pool()
 
 
 @app.post("/optimizer/run", dependencies=[Depends(get_current_username)])
