@@ -12,5 +12,8 @@ memory_sync.pid
 .DS_Store
 Thumbs.db
 
+# Editor
+.vscode/
+
 raw/
 sync_last_id.txt
