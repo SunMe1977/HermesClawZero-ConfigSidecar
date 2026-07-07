@@ -1,6 +1,7 @@
 from fastapi import Body, FastAPI, HTTPException, Depends, status, Form, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
+from starlette.concurrency import run_in_threadpool
 from psycopg_pool import ConnectionPool
 import ollama
 import requests
@@ -37,7 +38,7 @@ API_KEY = os.getenv("API_KEY") or os.getenv("OPENCLAW_KEY")
 DASHBOARD_PASSWORD = os.getenv("DASHBOARD_PASSWORD", "admin")
 DASHBOARD_SESSION_COOKIE = "dashboard_session"
 DASHBOARD_SESSION_TTL_SECONDS = int(os.getenv("DASHBOARD_SESSION_TTL_SECONDS", "43200"))
-DASHBOARD_SESSION_SECRET = os.getenv("DASHBOARD_SESSION_SECRET") or API_KEY or "change-this-dashboard-secret"
+DASHBOARD_SESSION_SECRET = (os.getenv("DASHBOARD_SESSION_SECRET", "") or "").strip()
 
 
 def env_bool(name: str, default: bool = False) -> bool:
@@ -138,6 +139,27 @@ RATE_LIMIT_LOCK = threading.Lock()
 OPENROUTER_MAX_RETRIES = 3
 OPENROUTER_RETRY_BASE_SECONDS = 1.0
 OPENROUTER_DEGRADED_MESSAGE = "OpenRouter temporarily unavailable. Memories are saved but search will be degraded."
+ALLOW_EMBEDDING_SCHEMA_RESET = env_bool("ALLOW_EMBEDDING_SCHEMA_RESET", False)
+
+
+def validate_security_startup() -> None:
+    if not API_KEY:
+        raise RuntimeError("API_KEY is required.")
+
+    if DASHBOARD_PASSWORD == "admin":
+        raise RuntimeError(
+            "DASHBOARD_PASSWORD must be explicitly set and cannot remain the default 'admin'."
+        )
+
+    if not DASHBOARD_SESSION_SECRET:
+        raise RuntimeError("DASHBOARD_SESSION_SECRET is required and must be explicitly set.")
+
+    weak_session_secrets = {"change-this-dashboard-secret", "admin", "password", "123456"}
+    if DASHBOARD_SESSION_SECRET.lower() in weak_session_secrets:
+        raise RuntimeError("DASHBOARD_SESSION_SECRET is too weak. Set a strong random secret.")
+
+    if DASHBOARD_SESSION_SECRET == API_KEY:
+        raise RuntimeError("DASHBOARD_SESSION_SECRET must not reuse API_KEY.")
 
 # Auth Helpers
 def _build_dashboard_session_token(username: str) -> str:
@@ -699,12 +721,17 @@ def ensure_embeddings_schema(expected_dim: int) -> None:
             expected_type = f"vector({expected_dim})"
 
             if current_type != expected_type:
-                logger.warning(
-                    "[SCHEMA] embeddings.embedding type mismatch (%s -> %s). "
-                    "Recreating embeddings table for provider alignment.",
-                    current_type or 'unknown',
-                    expected_type,
+                message = (
+                    "[SCHEMA] embeddings.embedding type mismatch "
+                    f"({current_type or 'unknown'} -> {expected_type}). "
+                    "Automatic destructive reset is disabled. "
+                    "Run rebuild_embeddings.py or set ALLOW_EMBEDDING_SCHEMA_RESET=true to force reset."
                 )
+                if not ALLOW_EMBEDDING_SCHEMA_RESET:
+                    logger.error(message)
+                    raise RuntimeError(message)
+
+                logger.warning("%s Proceeding with forced reset due to ALLOW_EMBEDDING_SCHEMA_RESET=true.", message)
                 cur.execute("DROP TABLE IF EXISTS embeddings")
                 cur.execute(
                     f"""
@@ -717,6 +744,381 @@ def ensure_embeddings_schema(expected_dim: int) -> None:
                     """
                 )
             conn.commit()
+
+
+def _capture_sync(
+    text: str | None = None,
+    scope_id: str | None = None,
+    chat_id: str | None = None,
+    body: CaptureRequest | None = None,
+):
+    capture_text = text if text is not None else (body.text if body else None)
+    capture_scope_id = normalize_scope_id(scope_id if scope_id is not None else (body.scope_id if body else None))
+    capture_chat_id = derive_chat_id(chat_id if chat_id is not None else (body.chat_id if body else None), capture_scope_id)
+    if not capture_text or not capture_text.strip():
+        raise HTTPException(status_code=400, detail="text is required")
+
+    capture_text = capture_text.strip()
+    meta = score_memory(capture_text)
+    similar = find_similar_page(capture_text, scope_id=capture_scope_id, chat_id=capture_chat_id)
+    if similar:
+        with connect_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    UPDATE pages
+                    SET frequency = frequency + 1,
+                        confidence = LEAST(1.0, confidence + 0.01),
+                        last_used = NOW(),
+                        updated_at = NOW()
+                    WHERE id = %s
+                    """,
+                    (similar["id"],),
+                )
+                conn.commit()
+        return {
+            "status": "duplicate",
+            "page_id": similar["id"],
+            "distance": similar["distance"],
+            "content": similar["content"],
+            "memory_type": meta["memory_type"],
+            "score": meta["score"],
+        }
+
+    with connect_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO pages (
+                    content, memory_type, importance, confidence, frequency,
+                    sentiment, source, ttl_days, scope_id, chat_id, updated_at, last_used
+                )
+                VALUES (%s, %s, %s, %s, 1, %s, %s, %s, %s, %s, NOW(), NOW())
+                RETURNING id
+                """,
+                (
+                    capture_text,
+                    meta["memory_type"],
+                    meta["importance"],
+                    meta["confidence"],
+                    meta["sentiment"],
+                    meta["source"],
+                    meta["ttl_days"],
+                    capture_scope_id,
+                    capture_chat_id,
+                ),
+            )
+            page_id = cur.fetchone()[0]
+            conn.commit()
+
+    try:
+        emb = generate_embedding(capture_text)
+        emb_str = embedding_to_pgvector_literal(emb)
+        with connect_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute("INSERT INTO embeddings (page_id, embedding) VALUES (%s, %s::vector)", (page_id, emb_str))
+                conn.commit()
+    except HTTPException as ex:
+        if ex.status_code == 503 and ex.detail == OPENROUTER_DEGRADED_MESSAGE:
+            return {
+                "status": "ok_degraded",
+                "page_id": page_id,
+                "memory_type": meta["memory_type"],
+                "score": meta["score"],
+                "importance": round(meta["importance"], 3),
+                "confidence": round(meta["confidence"], 3),
+                "warning": OPENROUTER_DEGRADED_MESSAGE,
+            }
+        with connect_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute("DELETE FROM pages WHERE id = %s", (page_id,))
+                conn.commit()
+        raise ex
+    except Exception as ex:
+        with connect_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute("DELETE FROM pages WHERE id = %s", (page_id,))
+                conn.commit()
+        raise HTTPException(status_code=500, detail=f"Failed to store embedding: {ex}") from ex
+
+    return {
+        "status": "ok",
+        "page_id": page_id,
+        "memory_type": meta["memory_type"],
+        "score": meta["score"],
+        "importance": round(meta["importance"], 3),
+        "confidence": round(meta["confidence"], 3),
+    }
+
+
+def _capture_batch_sync(body: BatchCaptureRequest):
+    if not body.items:
+        raise HTTPException(status_code=400, detail="items are required")
+
+    prepared: list[tuple[int | None, str | None, str, str, dict]] = []
+    for item in body.items:
+        text = (item.text or "").strip()
+        if not text:
+            continue
+        meta = score_memory(text)
+        normalized_scope_id = normalize_scope_id(item.scope_id)
+        prepared.append((item.msg_id, normalized_scope_id, derive_chat_id(item.chat_id, normalized_scope_id), text, meta))
+
+    if not prepared:
+        raise HTTPException(status_code=400, detail="no valid non-empty items")
+
+    if body.skip_dedupe:
+        dedupe_candidates = prepared
+    else:
+        dedupe_candidates = []
+        for msg_id, scope_id, chat_id, text, meta in prepared:
+            similar = find_similar_page(text, scope_id=scope_id, chat_id=chat_id)
+            if similar:
+                with connect_db() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            """
+                            UPDATE pages
+                            SET frequency = frequency + 1,
+                                confidence = LEAST(1.0, confidence + 0.01),
+                                last_used = NOW(),
+                                updated_at = NOW()
+                            WHERE id = %s
+                            """,
+                            (similar["id"],),
+                        )
+                        conn.commit()
+                continue
+            dedupe_candidates.append((msg_id, scope_id, chat_id, text, meta))
+
+    if not dedupe_candidates:
+        return {"status": "ok", "processed": 0, "msg_ids": []}
+
+    texts = [x[3] for x in dedupe_candidates]
+    embeddings = generate_embeddings(texts)
+    if len(embeddings) != len(texts):
+        raise HTTPException(status_code=500, detail="embedding batch size mismatch")
+
+    inserted_msg_ids: list[int] = []
+    with connect_db() as conn:
+        with conn.cursor() as cur:
+            page_ids: list[int] = []
+            for msg_id, scope_id, chat_id, text, meta in dedupe_candidates:
+                cur.execute(
+                    """
+                    INSERT INTO pages (
+                        content, memory_type, importance, confidence, frequency,
+                        sentiment, source, ttl_days, scope_id, chat_id, updated_at, last_used
+                    )
+                    VALUES (%s, %s, %s, %s, 1, %s, %s, %s, %s, %s, NOW(), NOW())
+                    RETURNING id
+                    """,
+                    (
+                        text,
+                        meta["memory_type"],
+                        meta["importance"],
+                        meta["confidence"],
+                        meta["sentiment"],
+                        meta["source"],
+                        meta["ttl_days"],
+                        scope_id,
+                        chat_id,
+                    ),
+                )
+                page_ids.append(cur.fetchone()[0])
+                if msg_id is not None:
+                    inserted_msg_ids.append(int(msg_id))
+
+            for page_id, embedding in zip(page_ids, embeddings):
+                emb_str = embedding_to_pgvector_literal(embedding)
+                cur.execute(
+                    "INSERT INTO embeddings (page_id, embedding) VALUES (%s, %s::vector)",
+                    (page_id, emb_str),
+                )
+
+            conn.commit()
+
+    return {
+        "status": "ok",
+        "processed": len(dedupe_candidates),
+        "msg_ids": inserted_msg_ids,
+    }
+
+
+def _search_sync(
+    query: str = "",
+    limit: int = 5,
+    rerank_results: bool = False,
+    scope_id: str | None = None,
+    chat_id: str = "global",
+):
+    search_scope_id = normalize_scope_id(scope_id)
+    search_chat_id = normalize_chat_id(chat_id)
+    if query.strip() == "":
+        with connect_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT id, content, memory_type, importance, confidence, frequency
+                    FROM pages
+                    WHERE is_archived = FALSE
+                      AND chat_id = %s
+                      AND (%s IS NULL OR scope_id = %s)
+                    ORDER BY id DESC
+                    LIMIT %s
+                    """,
+                    (search_chat_id, search_scope_id, search_scope_id, limit),
+                )
+                rows = cur.fetchall()
+        ids = [r[0] for r in rows]
+        if ids:
+            with connect_db() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "UPDATE pages SET last_retrieved = NOW(), frequency = frequency + 1 WHERE id = ANY(%s)",
+                        (ids,),
+                    )
+                    conn.commit()
+        return [
+            {
+                "id": r[0],
+                "content": r[1],
+                "memory_type": r[2],
+                "importance": r[3],
+                "confidence": r[4],
+                "frequency": r[5],
+                "hybrid_score": None,
+                "explainability": {
+                    "reasons": ["recent memories list"],
+                    "components": {},
+                },
+            }
+            for r in rows
+        ]
+
+    qemb_str = None
+    degraded_search = False
+    degraded_reason = None
+    try:
+        qemb = generate_embedding(query)
+        qemb_str = embedding_to_pgvector_literal(qemb)
+    except HTTPException as ex:
+        if ex.status_code == 503 and ex.detail == OPENROUTER_DEGRADED_MESSAGE:
+            degraded_search = True
+            degraded_reason = OPENROUTER_DEGRADED_MESSAGE
+        else:
+            raise
+
+    candidates: dict[int, dict] = {}
+
+    with connect_db() as conn:
+        with conn.cursor() as cur:
+            vector_rows = []
+            if qemb_str is not None:
+                cur.execute(
+                    """
+                    SELECT p.id, p.content, p.memory_type, p.importance, p.confidence, p.frequency,
+                           EXTRACT(EPOCH FROM (NOW() - COALESCE(p.last_retrieved, p.last_used, p.created_at))) / 86400.0 AS age_days,
+                           e.embedding <-> %s::vector AS vector_distance
+                    FROM embeddings e
+                    JOIN pages p ON p.id = e.page_id
+                    WHERE p.is_archived = FALSE
+                      AND p.chat_id = %s
+                      AND (%s IS NULL OR p.scope_id = %s)
+                    ORDER BY vector_distance
+                    LIMIT %s
+                    """,
+                    (qemb_str, search_chat_id, search_scope_id, search_scope_id, limit * 2),
+                )
+                vector_rows = cur.fetchall()
+
+            cur.execute(
+                """
+                SELECT p.id, p.content, p.memory_type, p.importance, p.confidence, p.frequency,
+                       EXTRACT(EPOCH FROM (NOW() - COALESCE(p.last_retrieved, p.last_used, p.created_at))) / 86400.0 AS age_days,
+                       ts_rank_cd(to_tsvector('english', p.content), plainto_tsquery('english', %s)) AS lexical_rank
+                FROM pages p
+                WHERE p.is_archived = FALSE
+                    AND p.chat_id = %s
+                    AND (%s IS NULL OR p.scope_id = %s)
+                  AND to_tsvector('english', p.content) @@ plainto_tsquery('english', %s)
+                ORDER BY lexical_rank DESC
+                LIMIT %s
+                """,
+                (query, search_chat_id, search_scope_id, search_scope_id, query, limit * 2),
+            )
+            lexical_rows = cur.fetchall()
+
+    for r in vector_rows:
+        candidates[r[0]] = {
+            "id": r[0],
+            "content": r[1],
+            "memory_type": r[2],
+            "importance": r[3],
+            "confidence": r[4],
+            "frequency": r[5],
+            "age_days": float(r[6] or 0.0),
+            "vector_distance": float(r[7]) if r[7] is not None else None,
+            "lexical_rank": None,
+        }
+
+    for r in lexical_rows:
+        existing = candidates.get(r[0])
+        if existing:
+            existing["lexical_rank"] = float(r[7]) if r[7] is not None else None
+        else:
+            candidates[r[0]] = {
+                "id": r[0],
+                "content": r[1],
+                "memory_type": r[2],
+                "importance": r[3],
+                "confidence": r[4],
+                "frequency": r[5],
+                "age_days": float(r[6] or 0.0),
+                "vector_distance": None,
+                "lexical_rank": float(r[7]) if r[7] is not None else None,
+            }
+
+    results = []
+    for item in candidates.values():
+        score, explain = compute_hybrid_score(item)
+        item["hybrid_score"] = score
+        item["explainability"] = explain
+        results.append(item)
+
+    results.sort(key=lambda x: x["hybrid_score"], reverse=True)
+
+    if rerank_results:
+        results = rerank(query, results)
+
+    ids = [r["id"] for r in results[:limit]]
+    if ids:
+        with connect_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE pages SET last_retrieved = NOW(), frequency = frequency + 1 WHERE id = ANY(%s)",
+                    (ids,),
+                )
+                conn.commit()
+
+    return [
+        {
+            "id": r["id"],
+            "content": r["content"],
+            "memory_type": r["memory_type"],
+            "importance": r["importance"],
+            "confidence": r["confidence"],
+            "frequency": r["frequency"],
+            "hybrid_score": r["hybrid_score"],
+            "vector_distance": r.get("vector_distance"),
+            "lexical_rank": r.get("lexical_rank"),
+            "age_days": round(float(r.get("age_days") or 0.0), 2),
+            "explainability": r["explainability"],
+            "degraded": degraded_search,
+            "degraded_reason": degraded_reason,
+        }
+        for r in results[:limit]
+    ]
 
 
 def clamp(value: float, low: float = 0.0, high: float = 1.0) -> float:
@@ -1572,196 +1974,12 @@ async def capture(
     chat_id: str | None = None,
     body: CaptureRequest | None = Body(default=None),
 ):
-    capture_text = text if text is not None else (body.text if body else None)
-    capture_scope_id = normalize_scope_id(scope_id if scope_id is not None else (body.scope_id if body else None))
-    capture_chat_id = derive_chat_id(chat_id if chat_id is not None else (body.chat_id if body else None), capture_scope_id)
-    if not capture_text or not capture_text.strip(): raise HTTPException(status_code=400, detail="text is required")
-    capture_text = capture_text.strip()
-    meta = score_memory(capture_text)
-    similar = find_similar_page(capture_text, scope_id=capture_scope_id, chat_id=capture_chat_id)
-    if similar:
-        with connect_db() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
-                    UPDATE pages
-                    SET frequency = frequency + 1,
-                        confidence = LEAST(1.0, confidence + 0.01),
-                        last_used = NOW(),
-                        updated_at = NOW()
-                    WHERE id = %s
-                    """,
-                    (similar["id"],),
-                )
-                conn.commit()
-        return {
-            "status": "duplicate",
-            "page_id": similar["id"],
-            "distance": similar["distance"],
-            "content": similar["content"],
-            "memory_type": meta["memory_type"],
-            "score": meta["score"],
-        }
-
-    with connect_db() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                INSERT INTO pages (
-                    content, memory_type, importance, confidence, frequency,
-                        sentiment, source, ttl_days, scope_id, chat_id, updated_at, last_used
-                )
-                    VALUES (%s, %s, %s, %s, 1, %s, %s, %s, %s, %s, NOW(), NOW())
-                RETURNING id
-                """,
-                (
-                    capture_text,
-                    meta["memory_type"],
-                    meta["importance"],
-                    meta["confidence"],
-                    meta["sentiment"],
-                    meta["source"],
-                    meta["ttl_days"],
-                    capture_scope_id,
-                        capture_chat_id,
-                ),
-            )
-            page_id = cur.fetchone()[0]
-            conn.commit()
-
-    try:
-        emb = generate_embedding(capture_text)
-        emb_str = embedding_to_pgvector_literal(emb)
-        with connect_db() as conn:
-            with conn.cursor() as cur:
-                cur.execute("INSERT INTO embeddings (page_id, embedding) VALUES (%s, %s::vector)", (page_id, emb_str))
-                conn.commit()
-    except HTTPException as ex:
-        if ex.status_code == 503 and ex.detail == OPENROUTER_DEGRADED_MESSAGE:
-            return {
-                "status": "ok_degraded",
-                "page_id": page_id,
-                "memory_type": meta["memory_type"],
-                "score": meta["score"],
-                "importance": round(meta["importance"], 3),
-                "confidence": round(meta["confidence"], 3),
-                "warning": OPENROUTER_DEGRADED_MESSAGE,
-            }
-        # Roll back page-only inserts so failed embeddings do not create orphan records.
-        with connect_db() as conn:
-            with conn.cursor() as cur:
-                cur.execute("DELETE FROM pages WHERE id = %s", (page_id,))
-                conn.commit()
-        raise ex
-    except Exception as ex:
-        with connect_db() as conn:
-            with conn.cursor() as cur:
-                cur.execute("DELETE FROM pages WHERE id = %s", (page_id,))
-                conn.commit()
-        raise HTTPException(status_code=500, detail=f"Failed to store embedding: {ex}") from ex
-    return {
-        "status": "ok",
-        "page_id": page_id,
-        "memory_type": meta["memory_type"],
-        "score": meta["score"],
-        "importance": round(meta["importance"], 3),
-        "confidence": round(meta["confidence"], 3),
-    }
+    return await run_in_threadpool(_capture_sync, text, scope_id, chat_id, body)
 
 
 @app.post("/capture/batch", dependencies=[Depends(require_api_key)])
 async def capture_batch(body: BatchCaptureRequest):
-    if not body.items:
-        raise HTTPException(status_code=400, detail="items are required")
-
-    prepared: list[tuple[int | None, str | None, str, str, dict]] = []
-    for item in body.items:
-        text = (item.text or "").strip()
-        if not text:
-            continue
-        meta = score_memory(text)
-        normalized_scope_id = normalize_scope_id(item.scope_id)
-        prepared.append((item.msg_id, normalized_scope_id, derive_chat_id(item.chat_id, normalized_scope_id), text, meta))
-
-    if not prepared:
-        raise HTTPException(status_code=400, detail="no valid non-empty items")
-
-    if body.skip_dedupe:
-        dedupe_candidates = prepared
-    else:
-        dedupe_candidates = []
-        for msg_id, scope_id, chat_id, text, meta in prepared:
-            similar = find_similar_page(text, scope_id=scope_id, chat_id=chat_id)
-            if similar:
-                with connect_db() as conn:
-                    with conn.cursor() as cur:
-                        cur.execute(
-                            """
-                            UPDATE pages
-                            SET frequency = frequency + 1,
-                                confidence = LEAST(1.0, confidence + 0.01),
-                                last_used = NOW(),
-                                updated_at = NOW()
-                            WHERE id = %s
-                            """,
-                            (similar["id"],),
-                        )
-                        conn.commit()
-                continue
-            dedupe_candidates.append((msg_id, scope_id, chat_id, text, meta))
-
-    if not dedupe_candidates:
-        return {"status": "ok", "processed": 0, "msg_ids": []}
-
-    texts = [x[3] for x in dedupe_candidates]
-    embeddings = generate_embeddings(texts)
-    if len(embeddings) != len(texts):
-        raise HTTPException(status_code=500, detail="embedding batch size mismatch")
-
-    inserted_msg_ids: list[int] = []
-    with connect_db() as conn:
-        with conn.cursor() as cur:
-            page_ids: list[int] = []
-            for msg_id, scope_id, chat_id, text, meta in dedupe_candidates:
-                cur.execute(
-                    """
-                    INSERT INTO pages (
-                        content, memory_type, importance, confidence, frequency,
-                        sentiment, source, ttl_days, scope_id, chat_id, updated_at, last_used
-                    )
-                    VALUES (%s, %s, %s, %s, 1, %s, %s, %s, %s, %s, NOW(), NOW())
-                    RETURNING id
-                    """,
-                    (
-                        text,
-                        meta["memory_type"],
-                        meta["importance"],
-                        meta["confidence"],
-                        meta["sentiment"],
-                        meta["source"],
-                        meta["ttl_days"],
-                        scope_id,
-                        chat_id,
-                    ),
-                )
-                page_ids.append(cur.fetchone()[0])
-                if msg_id is not None:
-                    inserted_msg_ids.append(int(msg_id))
-
-            for page_id, embedding in zip(page_ids, embeddings):
-                emb_str = embedding_to_pgvector_literal(embedding)
-                cur.execute(
-                    "INSERT INTO embeddings (page_id, embedding) VALUES (%s, %s::vector)",
-                    (page_id, emb_str),
-                )
-
-            conn.commit()
-
-    return {
-        "status": "ok",
-        "processed": len(dedupe_candidates),
-        "msg_ids": inserted_msg_ids,
-    }
+    return await run_in_threadpool(_capture_batch_sync, body)
 
 @app.post("/watchdog/status", dependencies=[Depends(require_api_key)])
 async def watchdog_status_update(body: WatchdogStatusRequest):
@@ -1780,173 +1998,7 @@ async def search(
     scope_id: str | None = None,
     chat_id: str = "global",
 ):
-    search_scope_id = normalize_scope_id(scope_id)
-    search_chat_id = normalize_chat_id(chat_id)
-    if query.strip() == "":
-        with connect_db() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
-                    SELECT id, content, memory_type, importance, confidence, frequency
-                    FROM pages
-                    WHERE is_archived = FALSE
-                      AND chat_id = %s
-                      AND (%s IS NULL OR scope_id = %s)
-                    ORDER BY id DESC
-                    LIMIT %s
-                    """,
-                    (search_chat_id, search_scope_id, search_scope_id, limit),
-                )
-                rows = cur.fetchall()
-        ids = [r[0] for r in rows]
-        if ids:
-            with connect_db() as conn:
-                with conn.cursor() as cur:
-                    cur.execute(
-                        "UPDATE pages SET last_retrieved = NOW(), frequency = frequency + 1 WHERE id = ANY(%s)",
-                        (ids,),
-                    )
-                    conn.commit()
-        return [
-            {
-                "id": r[0],
-                "content": r[1],
-                "memory_type": r[2],
-                "importance": r[3],
-                "confidence": r[4],
-                "frequency": r[5],
-                "hybrid_score": None,
-                "explainability": {
-                    "reasons": ["recent memories list"],
-                    "components": {},
-                },
-            }
-            for r in rows
-        ]
-    
-    qemb_str = None
-    degraded_search = False
-    degraded_reason = None
-    try:
-        qemb = generate_embedding(query)
-        qemb_str = embedding_to_pgvector_literal(qemb)
-    except HTTPException as ex:
-        if ex.status_code == 503 and ex.detail == OPENROUTER_DEGRADED_MESSAGE:
-            degraded_search = True
-            degraded_reason = OPENROUTER_DEGRADED_MESSAGE
-        else:
-            raise
-
-    candidates: dict[int, dict] = {}
-
-    with connect_db() as conn:
-        with conn.cursor() as cur:
-            vector_rows = []
-            if qemb_str is not None:
-                cur.execute(
-                    """
-                    SELECT p.id, p.content, p.memory_type, p.importance, p.confidence, p.frequency,
-                           EXTRACT(EPOCH FROM (NOW() - COALESCE(p.last_retrieved, p.last_used, p.created_at))) / 86400.0 AS age_days,
-                           e.embedding <-> %s::vector AS vector_distance
-                    FROM embeddings e
-                    JOIN pages p ON p.id = e.page_id
-                    WHERE p.is_archived = FALSE
-                                            AND p.chat_id = %s
-                        AND (%s IS NULL OR p.scope_id = %s)
-                    ORDER BY vector_distance
-                    LIMIT %s
-                    """,
-                    (qemb_str, search_chat_id, search_scope_id, search_scope_id, limit * 2),
-                )
-                vector_rows = cur.fetchall()
-
-            cur.execute(
-                """
-                SELECT p.id, p.content, p.memory_type, p.importance, p.confidence, p.frequency,
-                       EXTRACT(EPOCH FROM (NOW() - COALESCE(p.last_retrieved, p.last_used, p.created_at))) / 86400.0 AS age_days,
-                       ts_rank_cd(to_tsvector('english', p.content), plainto_tsquery('english', %s)) AS lexical_rank
-                FROM pages p
-                WHERE p.is_archived = FALSE
-                    AND p.chat_id = %s
-                    AND (%s IS NULL OR p.scope_id = %s)
-                  AND to_tsvector('english', p.content) @@ plainto_tsquery('english', %s)
-                ORDER BY lexical_rank DESC
-                LIMIT %s
-                """,
-                            (query, search_chat_id, search_scope_id, search_scope_id, query, limit * 2),
-            )
-            lexical_rows = cur.fetchall()
-
-    for r in vector_rows:
-        candidates[r[0]] = {
-            "id": r[0],
-            "content": r[1],
-            "memory_type": r[2],
-            "importance": r[3],
-            "confidence": r[4],
-            "frequency": r[5],
-            "age_days": float(r[6] or 0.0),
-            "vector_distance": float(r[7]) if r[7] is not None else None,
-            "lexical_rank": None,
-        }
-
-    for r in lexical_rows:
-        existing = candidates.get(r[0])
-        if existing:
-            existing["lexical_rank"] = float(r[7]) if r[7] is not None else None
-        else:
-            candidates[r[0]] = {
-                "id": r[0],
-                "content": r[1],
-                "memory_type": r[2],
-                "importance": r[3],
-                "confidence": r[4],
-                "frequency": r[5],
-                "age_days": float(r[6] or 0.0),
-                "vector_distance": None,
-                "lexical_rank": float(r[7]) if r[7] is not None else None,
-            }
-
-    results = []
-    for item in candidates.values():
-        score, explain = compute_hybrid_score(item)
-        item["hybrid_score"] = score
-        item["explainability"] = explain
-        results.append(item)
-
-    results.sort(key=lambda x: x["hybrid_score"], reverse=True)
-
-    if rerank_results:
-        results = rerank(query, results)
-
-    ids = [r["id"] for r in results[:limit]]
-    if ids:
-        with connect_db() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    "UPDATE pages SET last_retrieved = NOW(), frequency = frequency + 1 WHERE id = ANY(%s)",
-                    (ids,),
-                )
-                conn.commit()
-    
-    return [
-        {
-            "id": r["id"],
-            "content": r["content"],
-            "memory_type": r["memory_type"],
-            "importance": r["importance"],
-            "confidence": r["confidence"],
-            "frequency": r["frequency"],
-            "hybrid_score": r["hybrid_score"],
-            "vector_distance": r.get("vector_distance"),
-            "lexical_rank": r.get("lexical_rank"),
-            "age_days": round(float(r.get("age_days") or 0.0), 2),
-            "explainability": r["explainability"],
-            "degraded": degraded_search,
-            "degraded_reason": degraded_reason,
-        }
-        for r in results[:limit]
-    ]
+    return await run_in_threadpool(_search_sync, query, limit, rerank_results, scope_id, chat_id)
 
 def rerank(query: str, items: list[dict]) -> list[dict]:
     if not items: return items
@@ -1976,11 +2028,14 @@ async def delete_page(page_id: int = Form(...)):
 
 @app.get("/export", dependencies=[Depends(get_current_username)])
 async def export_data():
-    with connect_db() as conn:
-        with conn.cursor() as cur:
-            cur.execute("SELECT id, content FROM pages")
-            rows = cur.fetchall()
-    return [{"id": r[0], "content": r[1]} for r in rows]
+    def _export_data_sync() -> list[dict]:
+        with connect_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT id, content FROM pages")
+                rows = cur.fetchall()
+        return [{"id": r[0], "content": r[1]} for r in rows]
+
+    return await run_in_threadpool(_export_data_sync)
 
 @app.post("/tag_auto/{page_id}", dependencies=[Depends(get_current_username)])
 async def tag_auto(page_id: int):
@@ -2423,10 +2478,7 @@ def start_auto_update_worker():
 
 @app.on_event("startup")
 def startup_event():
-    if not API_KEY:
-        raise RuntimeError("API_KEY is required.")
-    if DASHBOARD_PASSWORD == "admin":
-        print("[SECURITY] DASHBOARD_PASSWORD is still set to default 'admin'.")
+    validate_security_startup()
 
     try:
         ensure_phase1_schema()
@@ -2448,7 +2500,7 @@ def shutdown_event():
 
 @app.post("/optimizer/run", dependencies=[Depends(get_current_username)])
 async def run_optimizer_now():
-    stats = run_decay_and_archive_once()
+    stats = await run_in_threadpool(run_decay_and_archive_once)
     return {"status": "ok", "optimizer": stats}
 
 
@@ -2463,12 +2515,12 @@ async def version_info():
 
 @app.get("/update/status", dependencies=[Depends(get_current_username)])
 async def update_status():
-    return {"status": "ok", "update": get_update_status(fetch_remote=True)}
+    return {"status": "ok", "update": await run_in_threadpool(get_update_status, True)}
 
 
 @app.post("/update/run", dependencies=[Depends(get_current_username)])
 async def update_run():
-    result = run_update()
+    result = await run_in_threadpool(run_update)
     return {"status": "ok", "update": result}
 
 
@@ -2485,7 +2537,7 @@ async def update_run_from_dashboard(
     safe_stale_days = max(1, min(health_stale_days, 3650))
     safe_confidence = clamp(health_confidence_threshold, 0.0, 1.0)
     safe_limit = max(1, min(health_limit, 50))
-    result = run_update()
+    result = await run_in_threadpool(run_update)
     if result.get("updated"):
         msg = "Update run complete."
     else:
@@ -2506,16 +2558,18 @@ async def update_run_from_dashboard(
 
 @app.post("/optimizer/archive_selected", dependencies=[Depends(get_current_username)])
 async def optimizer_archive_selected(payload: ArchiveSelectionRequest):
-    result = archive_selected_pages(payload.page_ids, archive_reason=payload.archive_reason)
+    result = await run_in_threadpool(
+        lambda: archive_selected_pages(payload.page_ids, archive_reason=payload.archive_reason)
+    )
     return {"status": "ok", "archive": result}
 
 
 @app.post("/optimizer/undo_latest_manual_archive", dependencies=[Depends(get_current_username)])
 async def optimizer_undo_latest_manual_archive():
-    latest_batch_id = get_latest_manual_archive_batch_id()
+    latest_batch_id = await run_in_threadpool(get_latest_manual_archive_batch_id)
     if not latest_batch_id:
         return {"status": "ok", "undo": {"restored": 0, "deleted_from_archive": 0, "archive_batch_id": None}}
-    result = restore_archive_batch(latest_batch_id)
+    result = await run_in_threadpool(restore_archive_batch, latest_batch_id)
     return {"status": "ok", "undo": result}
 
 
@@ -2528,7 +2582,7 @@ async def run_optimizer_from_dashboard(
     health_confidence_threshold: float = Form(0.3),
     health_limit: int = Form(8),
 ):
-    stats = run_decay_and_archive_once()
+    stats = await run_in_threadpool(run_decay_and_archive_once)
     message = f"Optimizer completed: decayed={stats['decayed']}, archived={stats['archived']}, deleted={stats['deleted']}"
     safe_page = max(1, page)
     safe_stale_days = max(1, min(health_stale_days, 3650))
@@ -2558,11 +2612,13 @@ async def optimizer_dry_run(
     safe_limit = max(1, min(limit, 200))
     safe_stale_days = max(1, min(stale_days, 3650))
     safe_confidence = clamp(confidence_threshold, 0.0, 1.0)
-    dry_run = get_optimizer_dry_run(
-        limit=safe_limit,
-        stale_days=safe_stale_days,
-        confidence_threshold=safe_confidence,
-        selected_scope=selected_scope,
+    dry_run = await run_in_threadpool(
+        lambda: get_optimizer_dry_run(
+            limit=safe_limit,
+            stale_days=safe_stale_days,
+            confidence_threshold=safe_confidence,
+            selected_scope=selected_scope,
+        )
     )
     return {"status": "ok", "dry_run": dry_run}
 
@@ -2580,11 +2636,13 @@ async def optimizer_dry_run_from_dashboard(
     safe_stale_days = max(1, min(health_stale_days, 3650))
     safe_confidence = clamp(health_confidence_threshold, 0.0, 1.0)
     safe_limit = max(1, min(health_limit, 50))
-    dry_run = get_optimizer_dry_run(
-        limit=safe_limit,
-        stale_days=safe_stale_days,
-        confidence_threshold=safe_confidence,
-        selected_scope=selected_scope,
+    dry_run = await run_in_threadpool(
+        lambda: get_optimizer_dry_run(
+            limit=safe_limit,
+            stale_days=safe_stale_days,
+            confidence_threshold=safe_confidence,
+            selected_scope=selected_scope,
+        )
     )
     dry_message = (
         f"Dry run preview: would decay={dry_run['would_decay_count']}, "
@@ -2619,7 +2677,9 @@ async def optimizer_archive_selected_from_dashboard(
     safe_confidence = clamp(health_confidence_threshold, 0.0, 1.0)
     safe_limit = max(1, min(health_limit, 50))
 
-    result = archive_selected_pages(selected_page_ids, archive_reason="manual_selected")
+    result = await run_in_threadpool(
+        lambda: archive_selected_pages(selected_page_ids, archive_reason="manual_selected")
+    )
     if result["requested"] == 0:
         msg = "No memories selected for archive."
         msg_key = "dry_run_msg"
@@ -2658,11 +2718,11 @@ async def optimizer_undo_latest_manual_archive_from_dashboard(
     safe_confidence = clamp(health_confidence_threshold, 0.0, 1.0)
     safe_limit = max(1, min(health_limit, 50))
 
-    latest_batch_id = get_latest_manual_archive_batch_id()
+    latest_batch_id = await run_in_threadpool(get_latest_manual_archive_batch_id)
     if not latest_batch_id:
         msg = "No manual archive batch available to undo."
     else:
-        result = restore_archive_batch(latest_batch_id)
+        result = await run_in_threadpool(restore_archive_batch, latest_batch_id)
         msg = (
             f"Undo complete: restored={result['restored']}, "
             f"removed_archive_rows={result['deleted_from_archive']}, batch={result['archive_batch_id']}"
@@ -2692,11 +2752,13 @@ async def review_optimizer_candidates(
     safe_limit = max(1, min(limit, 200))
     safe_stale_days = max(1, min(stale_days, 3650))
     safe_confidence = clamp(confidence_threshold, 0.0, 1.0)
-    review = get_optimizer_review(
-        limit=safe_limit,
-        stale_days=safe_stale_days,
-        confidence_threshold=safe_confidence,
-        selected_scope=selected_scope,
+    review = await run_in_threadpool(
+        lambda: get_optimizer_review(
+            limit=safe_limit,
+            stale_days=safe_stale_days,
+            confidence_threshold=safe_confidence,
+            selected_scope=selected_scope,
+        )
     )
     return {"status": "ok", "review": review}
 
