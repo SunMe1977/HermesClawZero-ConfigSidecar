@@ -12,7 +12,11 @@ No API keys, no cloud, no config — just `docker compose up`.
 
 ---
 
-## 🚀 10‑Second Start
+## 🚀 10‑Second Demo
+
+<img src="images/demo-terminal.svg" alt="Terminal demo" width="100%">
+
+**⬆️ That's it.** Watch the terminal above — clone → up → verify → dashboard. All local, all free.
 
 ```bash
 git clone https://github.com/SunMe1977/HermesClawZero-ConfigSidecar.git

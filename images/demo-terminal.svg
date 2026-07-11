@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 380" width="720" height="380">
+  <defs>
+    <style>
+      @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+      @keyframes type1 { 0%{width:0} 5%{width:67ch} 100%{width:67ch} }
+      @keyframes type2 { 0%{width:0} 8%{width:57ch} 100%{width:57ch} }
+      @keyframes type3 { 0%{width:0} 10%{width:44ch} 100%{width:44ch} }
+      @keyframes type4 { 0%{width:0} 14%{width:4ch} 100%{width:4ch} }
+      @keyframes type5 { 0%{width:0} 16%{width:68ch} 100%{width:68ch} }
+      @keyframes fadeIn { 0%{opacity:0} 100%{opacity:1} }
+      .cursor { animation: blink 1s step-end infinite; }
+      .l1 { overflow:hidden; white-space:nowrap; animation: type1 4s steps(67) forwards; }
+      .l2 { opacity:0; animation: fadeIn 0.3s 1s forwards; }
+      .l3 { opacity:0; animation: fadeIn 0.3s 1.4s forwards; }
+      .l4 { overflow:hidden; white-space:nowrap; animation: type4 4s 1.8s steps(4) forwards; width:0; }
+      .l5 { overflow:hidden; white-space:nowrap; animation: type5 5s 2.2s steps(68) forwards; width:0; }
+      .l6 { opacity:0; animation: fadeIn 0.3s 3.5s forwards; }
+      .l7 { opacity:0; animation: fadeIn 0.3s 4.0s forwards; }
+      .l8 { opacity:0; animation: fadeIn 0.3s 4.3s forwards; }
+      .l9 { opacity:0; animation: fadeIn 0.3s 4.6s forwards; }
+      .l10 { overflow:hidden; white-space:nowrap; animation: type2 3s 5.0s steps(57) forwards; width:0; }
+      .l11 { opacity:0; animation: fadeIn 0.3s 6.0s forwards; }
+      .l12 { overflow:hidden; white-space:nowrap; animation: type3 3s 6.5s steps(44) forwards; width:0; }
+      .l13 { opacity:0; animation: fadeIn 0.3s 7.5s forwards; }
+      .l14 { overflow:hidden; white-space:nowrap; animation: type1 3s 8.0s steps(35) forwards; width:0; }
+      .l15 { opacity:0; animation: fadeIn 0.3s 9.0s forwards; }
+      .l16 { opacity:0; animation: fadeIn 0.3s 9.5s forwards; }
+      .foot { opacity:0; animation: fadeIn 0.5s 10s forwards; }
+    </style>
+  </defs>
+  <!-- Terminal window -->
+  <rect x="0" y="0" width="720" height="380" rx="8" fill="#1a1b26"/>
+  <!-- Title bar dots -->
+  <circle cx="30" cy="24" r="5" fill="#ff5f57"/>
+  <circle cx="48" cy="24" r="5" fill="#febc2e"/>
+  <circle cx="66" cy="24" r="5" fill="#28c840"/>
+  <text x="90" y="29" fill="#565f89" font-family="monospace" font-size="12">HermesClawZero — Quick Start (10s demo)</text>
+  <!-- Terminal content -->
+  <g font-family="'Courier New',monospace" font-size="14">
+    <text x="20" y="55" fill="#9ece6a" font-weight="bold" class="l1">
+      <tspan>$ git clone https://github.com/SunMe1977/HermesClawZero-ConfigSidecar.git</tspan>
+    </text>
+    <text x="20" y="77" fill="#c0caf5" class="l2">  Cloning into 'HermesClawZero-ConfigSidecar'...</text>
+    <text x="20" y="99" fill="#c0caf5" class="l3">  Receiving objects: 100% (97/97), done.</text>
+    <text x="20" y="121" fill="#9ece6a" font-weight="bold" class="l4">
+      <tspan>$ cd HermesClawZero-ConfigSidecar</tspan>
+    </text>
+    <text x="20" y="143" fill="#9ece6a" font-weight="bold" class="l5">
+      <tspan>$ docker compose --profile ollama up -d --build</tspan>
+    </text>
+    <text x="20" y="165" fill="#c0caf5" class="l6">  [+] Building 3/3 containers</text>
+    <text x="20" y="187" fill="#c0caf5" class="l7">  [+] Running 3/3</text>
+    <text x="20" y="209" fill="#73daca" class="l8">   ✓ Container gbrain-postgres  Started</text>
+    <text x="20" y="231" fill="#73daca" class="l9">   ✓ Container api              Started</text>
+    <text x="20" y="253" fill="#9ece6a" font-weight="bold" class="l10">
+      <tspan>$ curl http://localhost:8010/healthz</tspan>
+    </text>
+    <text x="20" y="275" fill="#c0caf5" class="l11">  {"status":"ok","database":"ok"}</text>
+    <text x="20" y="297" fill="#9ece6a" font-weight="bold" class="l12">
+      <tspan>$ python memory.py capture "Demo: memory activated!"</tspan>
+    </text>
+    <text x="20" y="319" fill="#c0caf5" class="l13">  {"status":"ok","page_id":1}</text>
+    <text x="20" y="341" fill="#9ece6a" font-weight="bold" class="l14">
+      <tspan>$ open http://localhost:8010/dashboard</tspan>
+    </text>
+    <text x="20" y="363" fill="#7dcfff" class="l15">  ✓ Memory active  |  Dashboard ready</text>
+  </g>
+  <!-- Cursor -->
+  <rect x="690" y="328" width="8" height="16" rx="1" fill="#c0caf5" class="cursor"/>
+  <!-- Footer badge -->
+  <text x="500" y="375" fill="#565f89" font-family="monospace" font-size="10" class="foot">
+    ⚡ 10 seconds · zero config · local Ollama
+  </text>
+</svg>
