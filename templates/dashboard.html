@@ -35,9 +35,36 @@
     .pagination .active { background:#4da6ff; }
     .pagination .inactive { background:#333; }
     .error-box { margin:8px 0 0; padding:10px; background:#3a1d1d; border:1px solid #8b2b2b; border-radius:6px; color:#fecaca; }
+    .tier-hot { display:inline-block; padding:1px 7px; border-radius:4px; font-size:10px; font-weight:700; background:#3b1a2f; color:#ff6b9d; border:1px solid #5a2a48; }
+    .tier-warm { display:inline-block; padding:1px 7px; border-radius:4px; font-size:10px; font-weight:700; background:#1a2f3b; color:#6ec6ff; border:1px solid #2a4a5a; }
+    .tier-cold { display:inline-block; padding:1px 7px; border-radius:4px; font-size:10px; font-weight:700; background:#1a1a2e; color:#818cf8; border:1px solid #2a2a48; }
+    .tier-standard { display:inline-block; padding:1px 7px; border-radius:4px; font-size:10px; font-weight:700; background:#2a2a2a; color:#9ca3af; border:1px solid #444; }
+    .feedback-btn { padding:2px 8px; border-radius:4px; cursor:pointer; border:1px solid #444; background:#1e1e1e; color:#999; font-size:11px; margin-left:4px; }
+    .feedback-btn:hover { border-color:#888; color:#fff; }
+    .feedback-btn.on { border-color:#4da6ff; color:#4da6ff; background:#1a2538; }
+    .editor-modal { display:none; position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); z-index:1000; background:#1e1e1e; border:1px solid #444; border-radius:10px; padding:20px; width:500px; max-width:90%; box-shadow:0 8px 40px rgba(0,0,0,0.6); }
+    .editor-modal textarea { width:100%; height:120px; background:#121212; color:#ddd; border:1px solid #444; border-radius:6px; padding:8px; font-size:13px; margin:8px 0; }
+    .merge-checkbox { margin-right:6px; transform:scale(1.2); }
   </style>
 </head>
 <body>
+  <!-- Editor Modal -->
+  <div id="editorModal" class="editor-modal">
+    <h3 style="margin:0 0 8px; color:#ddd;">✏️ Edit Memory</h3>
+    <input id="editId" type="hidden">
+    <textarea id="editContent" placeholder="Memory content..."></textarea>
+    <select id="editType" style="width:100%; padding:6px; background:#121212; color:#ddd; border:1px solid #444; border-radius:4px; margin-bottom:10px;">
+      <option value="conversation">conversation</option>
+      <option value="fact">fact</option>
+      <option value="preference">preference</option>
+      <option value="project">project</option>
+      <option value="skill">skill</option>
+    </select>
+    <div style="display:flex; gap:8px; justify-content:flex-end;">
+      <button onclick="document.getElementById('editorModal').style.display='none'" style="padding:6px 14px; border-radius:4px; border:1px solid #444; background:#1e1e1e; color:#999; cursor:pointer;">Cancel</button>
+      <button id="editorSaveBtn" onclick="saveEdit()" style="padding:6px 14px; border-radius:4px; border:none; background:#4da6ff; color:white; cursor:pointer;">Save</button>
+    </div>
+  </div>
   <div style="display:flex; align-items:center; gap:16px; flex-wrap:wrap;">
   <h1 style="flex:1; min-width:200px;">Memory Dashboard (Messages: {{ total_items }} |
     {% if watchdog_pending_value is not none and watchdog_pending_value > 0 %}
@@ -67,6 +94,15 @@
       <option value="{{ val }}"{% if val == active_scope %} selected{% endif %}>{{ label }}</option>
       {% endfor %}
     </select>
+    <select name="memory_type" style="margin-left:6px; padding:8px; border-radius:4px; border:1px solid #444; background:#1e1e1e; color:white;">
+      <option value="">All types</option>
+      <option value="fact"{% if memory_type == 'fact' %} selected{% endif %}>Fact</option>
+      <option value="preference"{% if memory_type == 'preference' %} selected{% endif %}>Preference</option>
+      <option value="project"{% if memory_type == 'project' %} selected{% endif %}>Project</option>
+      <option value="skill"{% if memory_type == 'skill' %} selected{% endif %}>Skill</option>
+      <option value="conversation"{% if memory_type == 'conversation' %} selected{% endif %}>Conversation</option>
+    </select>
+    <input type="number" name="days_back" placeholder="Days" value="{{ days_back or '' }}" style="width:70px; margin-left:6px; padding:8px; border-radius:4px; border:1px solid #444; background:#1e1e1e; color:white;" title="Only show memories from last N days">
     <span style="margin-left:8px; color:#bcd; font-size:0.9rem;">
       Selected user: {{ selected_scope_label }} ({{ selected_scope_total_count }} messages)
     </span>
@@ -83,6 +119,9 @@
     <p>Auto update enabled: {{ AUTO_UPDATE_ENABLED }} | Auto apply: {{ AUTO_UPDATE_APPLY }} | Interval: {{ AUTO_UPDATE_INTERVAL_SECONDS }}s</p>
     <p>Pending review: {{ review.summary.pending_count }} | Recently archived: {{ review.summary.recent_archived_count }}</p>
     <p style="color:#e6d992;">Dry-run forecast: would decay {{ dry_run.would_decay_count }} | would archive {{ dry_run.would_archive_count }}</p>
+    <p>Memory tiers: <span class="tier-hot">Hot {{ tier_stats.hot }}</span> <span class="tier-warm">Warm {{ tier_stats.warm }}</span> <span class="tier-standard">Standard {{ tier_stats.standard }}</span> <span class="tier-cold">Cold {{ tier_stats.cold }}</span>
+    | <a href="/graph/entities" target="_blank" style="color:#a78bfa;">Knowledge Graph</a>
+    | <a href="/nudge" target="_blank" style="color:#6ee7b7;">Nudge</a></p>
 
     <form method="post" action="/update/run_from_dashboard" style="margin:10px 0;">
       <input type="hidden" name="query" value="{{ query }}">
@@ -200,18 +239,26 @@
     {% endif %}
   </div>
 
+  <div style="margin:8px 0;">
+    <button onclick="mergeSelected()" style="padding:6px 14px; border-radius:4px; border:1px solid #a78bfa; background:#1a1a2e; color:#a78bfa; cursor:pointer; font-size:12px;">🔗 Merge Selected</button>
+    <span style="color:#666; font-size:11px; margin-left:8px;">Check memories above to merge</span>
+  </div>
+
   <ul>
     {% for r in rows %}
     <li class="list-item">
+      <input type="checkbox" class="merge-checkbox" value="{{ r[0] }}">
       <a href="/page_html?page_id={{ r[0] }}">[{{ r[0] }}]</a>
-      <span class="content">{{ r[1][:80] }}</span>
-      <form action="/delete" method="post" style="display:inline; float:right;">
-        <input type="hidden" name="page_id" value="{{ r[0] }}">
-        <button type="submit" class="btn-sm btn-danger" onclick="return confirm('Delete?')">Delete</button>
-      </form>
-      <form action="/tag_auto/{{ r[0] }}" method="post" style="display:inline; float:right; margin-right:10px;">
-        <button type="submit" class="btn-sm btn-success">Auto-Tag</button>
-      </form>
+      <span class="content">{{ r[1][:100] }}</span>
+      <span style="float:right; display:flex; gap:4px; align-items:center;">
+        <button class="feedback-btn" onclick="feedback({{ r[0] }},true,this)" title="Helpful">👍</button>
+        <button class="feedback-btn" onclick="feedback({{ r[0] }},false,this)" title="Not helpful">👎</button>
+        <button class="btn-sm" style="background:#4da6ff;color:white;" onclick="openEditor({{ r[0] }})">✏️</button>
+        <form action="/delete" method="post" style="display:inline; margin:0;">
+          <input type="hidden" name="page_id" value="{{ r[0] }}">
+          <button type="submit" class="btn-sm btn-danger" onclick="return confirm('Delete?')">🗑️</button>
+        </form>
+      </span>
     </li>
     {% endfor %}
   </ul>
@@ -248,6 +295,37 @@
     <div id="ghcMeta" style="font-size:10px; color:rgba(200,180,255,0.5); display:flex; gap:10px;"></div>
   </div>
 </div>
+
+<script>
+// ─── Dashboard Interactive Tools ────────────────────────────────────────
+function feedback(id, helpful, btn) {
+  fetch('/feedback/' + id + '?helpful=' + helpful, {method:'POST'})
+    .then(r=>r.json()).then(d=>{ if(d.updated) btn.classList.add('on') }).catch(()=>{});
+}
+function openEditor(id) {
+  document.getElementById('editId').value = id;
+  document.getElementById('editContent').value = '';
+  document.getElementById('editorModal').style.display = 'block';
+}
+function saveEdit() {
+  var id = document.getElementById('editId').value;
+  var content = document.getElementById('editContent').value;
+  var type = document.getElementById('editType').value;
+  if(!content) return alert('Content required');
+  var f = new FormData(); f.append('content',content); f.append('memory_type',type);
+  fetch('/memory/update/' + id, {method:'POST', body:f})
+    .then(r=>r.json()).then(d=>{ if(d.updated) location.reload() }).catch(()=>{});
+}
+function mergeSelected() {
+  var checked = document.querySelectorAll('.merge-checkbox:checked');
+  if(checked.length < 2) return alert('Select at least 2 memories');
+  var ids = Array.from(checked).map(c=>c.value);
+  var f = new FormData(); ids.forEach(id => f.append('source_ids', id));
+  if(!confirm('Merge ' + ids.length + ' memories into one?')) return;
+  fetch('/memory/merge', {method:'POST', body:f})
+    .then(r=>r.json()).then(d=>{ if(d.status==='ok') location.reload() }).catch(()=>{});
+}
+</script>
 
 <script>
 // ─── Memory Galaxy Animation Engine v2 ────────────────────────────────────

@@ -247,6 +247,8 @@ async def dashboard(
     query: str | None = None,
     selected_scope: str = DASHBOARD_SCOPE_ALL,
     page: int = 1,
+    memory_type: str | None = None,
+    days_back: int | None = None,
     optimizer_msg: str | None = None,
     dry_run_msg: str | None = None,
     restore_msg: str | None = None,
@@ -367,6 +369,14 @@ async def dashboard(
         for sid, c in scope_rows[:10]
     ]
     galaxy_total = int(total_items)
+
+    # Tier stats
+    try:
+        from hermesclaw.consolidation import compute_tier_stats
+        with connect_db() as conn:
+            tier_stats = compute_tier_stats(conn)
+    except Exception:
+        tier_stats = {"hot": 0, "warm": 0, "standard": 0, "cold": 0}
     try:
         with connect_db() as conn:
             with conn.cursor() as cur:
@@ -420,6 +430,9 @@ async def dashboard(
         dry_run=dry_run,
         version_info=version_info_val,
         update_status=update_status_val,
+        tier_stats=tier_stats,
+        memory_type=memory_type or "",
+        days_back=days_back or "",
         AUTO_UPDATE_ENABLED=AUTO_UPDATE_ENABLED,
         AUTO_UPDATE_APPLY=AUTO_UPDATE_APPLY,
         AUTO_UPDATE_INTERVAL_SECONDS=AUTO_UPDATE_INTERVAL_SECONDS,

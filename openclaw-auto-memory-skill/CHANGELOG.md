@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.6.0 (2026-07-11)
+
+### Added
+- **Dashboard UI integrations** — Tier badges (Hot/Warm/Cold), memory type filter, days back filter, Knowledge Graph link, Nudge link
+- **Interactive buttons** — 👍/👎 feedback on each memory, ✏️ inline editor modal, 🔗 merge with checkboxes
+- **Merge, Editor, Feedback, Nudge** — all new backend features now accessible from the Dashboard UI
+
 ## 2.0.0 (2026-07-11)
 
 ### Added
