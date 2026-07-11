@@ -211,8 +211,6 @@ python memory.py search "hello" 3
 
 ## 🖼️ Screenshots
 
-![Dashboard — timeline, search, health panel, and tenant isolation](images/dashboard.png "Dashboard")
-
 ![Memory Galaxy — interactive 3D memory visualization](images/galaxy.webp "Memory Galaxy")
 
 ![Architecture diagram](images/architecture-diagram.webp "Architecture")
