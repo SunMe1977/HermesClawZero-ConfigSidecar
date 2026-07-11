@@ -93,17 +93,18 @@ Windows + Ollama remains compatible when `.env` contains `AI_PROVIDER=ollama`.
 
 ## Environment Variables
 Set these in `.env` (never commit secrets):
-- `API_KEY`
-- `DB_PASSWORD`
+- `API_KEY` — required for all protected endpoints
+- `DB_PASSWORD` — PostgreSQL password
+- `AI_PROVIDER` — `ollama` (local) | `openai` | `gemini` | `anthropic` | `openrouter`
+- `EMBEDDING_PROVIDER` — `auto` (default, maps from AI_PROVIDER) or specific
+- `MEM_PUBLIC_URL` — base URL for client scripts (default: `http://localhost:8010`)
+- `OLLAMA_HOST` — Ollama endpoint (default: `http://host.docker.internal:11434`)
+- `COMPOSE_AI_PROVIDER` — runtime override for docker-compose (takes precedence)
 - Provider key depending on setup:
   - `OPENROUTER_API_KEY`
   - `OPENAI_API_KEY`
   - `GEMINI_API_KEY`
   - `ANTHROPIC_API_KEY`
-- Runtime selectors:
-  - `AI_PROVIDER`
-  - `EMBEDDING_PROVIDER`
-  - `COMPOSE_AI_PROVIDER`
 
 ## Security Notes
 - Multi-tenant isolation is active via `chat_id` + `scope_id` filtering.
@@ -199,6 +200,42 @@ Legend:
 - 🏠 Self-hosters and local-LLM enthusiasts
 - 🛠️ MCP and agent-workflow developers
 
+## MCP Server (Model Context Protocol)
+
+The sidecar includes a built-in MCP server for tools like Claude Desktop, VS Code extensions, and MCP-compatible IDEs:
+
+```bash
+# Install deps
+pip install mcp requests
+
+# Run the MCP server
+python mcp_server.py
+```
+
+**Available MCP tools:**
+| Tool | Description |
+|------|-------------|
+| `capture_memory(text)` | Save a new memory to the database |
+| `search_memory(query, limit=5)` | Search stored memories by semantic similarity |
+
+### Register with Hermes Agent
+```bash
+hermes mcp add hermesclawzero --command "python C:\dev\HermesClawZero-ConfigSidecar\mcp_server.py"
+```
+
+### Register with Claude Desktop
+Add to your `claude_desktop_config.json`:
+```json
+{
+  "mcpServers": {
+    "hermesclawzero": {
+      "command": "python",
+      "args": ["C:/dev/HermesClawZero-ConfigSidecar/mcp_server.py"]
+    }
+  }
+}
+```
+
 ## Roadmap
 - ✅ PostgreSQL storage
 - ✅ pgvector semantic memory
@@ -218,9 +255,9 @@ Inspired by recent advances in long-term AI memory, this project focuses on zero
 ## Tools
 - Ingest: drag-and-drop into `ingest.bat`
 - Maintenance: `maintenance.bat`
-- Capture: `python scripts/memory.py capture "text"`
-- Search: `python scripts/memory.py search "query"`
-- Autosave: `python scripts/memory.py autosave "content" "filename.txt"`
+- Capture: `python memory.py capture "text"`
+- Search: `python memory.py search "query"`
+- Autosave: `python memory.py autosave "content" "filename.txt"`
 
 ## Database View
 ![Database](images/db.png "Database (PostgreSQL)")

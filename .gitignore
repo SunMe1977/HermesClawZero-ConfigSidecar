@@ -1,13 +1,21 @@
 ﻿# Python
 __pycache__/
 *.pyc
-*.bak
+*.pyo
 venv/
 .env
 
+# Runtime data
+sync/
+inbox/
+archive/
+sync.log
+sync_last_id.txt
+memory_sync.lock
+memory_sync.pid
+
 # Logs
 *.log
-memory_sync.pid
 
 # OS
 .DS_Store
@@ -16,5 +24,11 @@ Thumbs.db
 # Editor
 .vscode/
 
+# Raw / generated
 raw/
-sync_last_id.txt
+knowledge/
+
+# Temp
+node
+npm
+pnpm

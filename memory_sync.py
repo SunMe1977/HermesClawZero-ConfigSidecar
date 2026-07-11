@@ -13,7 +13,8 @@ logger = logging.getLogger("hermesclaw.sync")
 # Watch both standard sync and the new inbox
 SYNC_FOLDERS = [pathlib.Path("sync"), pathlib.Path("inbox")]
 ARCHIVE_FOLDER = pathlib.Path("archive")
-API_URL = os.getenv("API_URL", "http://localhost:8010") + "/capture"
+# MEM_PUBLIC_URL takes precedence; fall back to API_URL for backward compat
+API_URL = (os.getenv("MEM_PUBLIC_URL") or os.getenv("API_URL", "http://localhost:8010")) + "/capture"
 API_KEY = os.getenv("API_KEY", "YOUR_API_KEY_HERE")
 PID_FILE = pathlib.Path("memory_sync.pid")
 
