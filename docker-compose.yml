@@ -30,10 +30,12 @@ services:
         condition: service_healthy
     env_file:
       - .env
+    volumes:
+      - /root/workspace/hc-sidecar:/app/repo
+      - /root/workspace/hc-sidecar/sync:/app/sync
+      - ${HERMES_DB_PATH_DIR:-/root/.hermes}:/hermes_state:ro
     ports:
       - "8010:8010"
-    volumes:
-      - ${HERMES_DB_PATH_DIR:-C:\Users\hansj\AppData\Local\hermes}:/hermes_state:ro
     environment:
       DB_HOST: db
       DB_PORT: 5432
@@ -50,6 +52,10 @@ services:
       AI_PROVIDER: ${COMPOSE_AI_PROVIDER:-${AI_PROVIDER:-openrouter}}
       EMBEDDING_PROVIDER: auto
       HERMES_DB_PATH: /hermes_state/state.db
+      UPDATE_REPO_DIR: /app/repo
+      UPDATE_REMOTE: ${AUTO_UPDATE_REMOTE:-origin}
+      UPDATE_BRANCH: ${AUTO_UPDATE_BRANCH:-main}
+      UPDATE_RESTART_COMMAND: ${UPDATE_RESTART_COMMAND:-}
       SYNC_DIR: ${SYNC_DIR}
       OLLAMA_HOST: ${OLLAMA_HOST}
     healthcheck:
