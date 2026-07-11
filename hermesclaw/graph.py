@@ -250,3 +250,79 @@ def get_top_entities(conn, limit: int = 20) -> list[dict]:
             (limit,),
         )
         return [{"id": r[0], "name": r[1], "type": r[2], "frequency": r[3]} for r in cur.fetchall()]
+
+
+# ── GraphRAG: Graph-augmented retrieval ──
+
+def graph_rag_search(conn, query_entities: list[str], query_text: str = "", limit: int = 10) -> list[dict]:
+    """GraphRAG: retrieve memories via entity graph traversal, then rerank by relevance.
+    
+    Two-phase:
+    1. Find entities matching query → traverse graph depth=1 → collect all attached memories
+    2. Rerank by entity frequency + recency + text relevance
+    """
+    seen_pages = {}  # page_id -> score
+    
+    for entity_name in query_entities[:5]:
+        # Find this entity
+        with conn.cursor() as cur:
+            cur.execute("SELECT id FROM entities WHERE name ILIKE %s", (entity_name,))
+            row = cur.fetchone()
+            if not row:
+                continue
+            eid = row[0]
+            
+            # Get all pages mentioning this entity
+            cur.execute(
+                """SELECT em.page_id, p.content, p.importance, p.confidence,
+                          EXTRACT(EPOCH FROM (NOW() - COALESCE(p.last_used, p.created_at))) / 86400.0 AS age_days
+                   FROM entity_mentions em
+                   JOIN pages p ON p.id = em.page_id
+                   WHERE em.entity_id = %s AND p.is_archived = FALSE
+                   LIMIT 20""",
+                (eid,),
+            )
+            for row2 in cur.fetchall():
+                pid = row2[0]
+                age = float(row2[4] or 0)
+                score = 0.6 * 1.0 + 0.2 * float(row2[2]) + 0.1 * float(row2[3]) + 0.1 * max(0.0, 1.0 - age / 30.0)
+                if pid in seen_pages:
+                    seen_pages[pid]["score"] = max(seen_pages[pid]["score"], score)
+                    seen_pages[pid]["entities"].append(entity_name)
+                else:
+                    seen_pages[pid] = {"id": pid, "content": row2[1], "importance": row2[2],
+                                       "confidence": row2[3], "age_days": row2[4],
+                                       "entities": [entity_name], "score": score}
+            
+            # Traverse relationships (depth=1)
+            cur.execute(
+                """SELECT r.target_entity_id FROM relationships r WHERE r.source_entity_id = %s
+                   UNION SELECT r.source_entity_id FROM relationships r WHERE r.target_entity_id = %s""",
+                (eid, eid),
+            )
+            related_ids = [r[0] for r in cur.fetchall()]
+            if related_ids:
+                cur.execute(
+                    """SELECT DISTINCT em.page_id FROM entity_mentions em
+                       WHERE em.entity_id = ANY(%s) LIMIT 30""",
+                    (related_ids,),
+                )
+                for (pid,) in cur.fetchall():
+                    if pid not in seen_pages:
+                        seen_pages[pid] = {"id": pid, "content": "", "importance": 0.5,
+                                           "confidence": 0.5, "age_days": 30, "entities": [], "score": 0.3 * 0.5}
+    
+    results = sorted(seen_pages.values(), key=lambda x: x["score"], reverse=True)[:limit]
+    
+    # Fill content for any that were only added via graph traversal
+    if results:
+        missing = [r for r in results if not r["content"]]
+        if missing:
+            with conn.cursor() as cur:
+                for r in missing:
+                    cur.execute("SELECT content FROM pages WHERE id = %s", (r["id"],))
+                    row = cur.fetchone()
+                    if row:
+                        r["content"] = row[0]
+    
+    return results

@@ -3,93 +3,319 @@
 <head>
   <title>Memory Dashboard</title>
   <style>
-    body { font-family: sans-serif; background-color: #121212; color: #fff; padding: 20px; }
-    h1 { border-bottom: 2px solid #333; padding-bottom: 10px; }
-    input { padding: 8px; width: 300px; border-radius: 4px; border: 1px solid #444; background: #1e1e1e; color: white; }
-    button { padding: 8px 16px; background: #4da6ff; color: white; border: none; border-radius: 4px; cursor: pointer; }
-    ul { list-style-type: none; padding: 0; margin-top: 20px; }
-    select { margin-left:8px; padding:8px; border-radius:4px; border:1px solid #444; background:#1e1e1e; color:white; max-width:100%; }
-    a { color: #9ec8ff; }
-    .badge-green { display:inline-flex; align-items:center; gap:8px; color:#22c55e; font-weight:700; }
-    .badge-green .dot { width:10px; height:10px; border-radius:50%; background:#22c55e; display:inline-block; box-shadow:0 0 0 2px rgba(34,197,94,0.25); }
-    .badge-blue { display:inline-flex; align-items:center; gap:8px; color:#93c5fd; font-weight:600; }
-    .badge-blue .dot { width:10px; height:10px; border-radius:50%; background:#93c5fd; display:inline-block; }
-    .badge-gray { color:#9ca3af; }
-    .banner { margin:14px 0; padding:10px; border-radius:6px; }
-    .banner-green { background:#1f3b25; border:1px solid #2f6b3c; }
-    .banner-yellow { background:#2a2c11; border:1px solid #757b27; }
-    .banner-blue { background:#1a2538; border:1px solid #3d5f8f; }
-    .health-box { margin:20px 0; padding:12px; border:1px solid #355; border-radius:8px; background:#151f2b; }
-    .health-box h2 { margin-top:0; }
-    .health-box p { margin:6px 0; color:#bcd; }
-    .scope-select { width:320px; }
+    :root {
+      --bg-primary: #0b0b0f;
+      --bg-secondary: #121216;
+      --bg-card: #18181d;
+      --bg-card-hover: #1e1e24;
+      --bg-input: #1a1a20;
+      --bg-table-row: #18181d;
+      --bg-table-stripe: #1c1c22;
+      --border: #23232a;
+      --border-hover: #2e2e38;
+      --text-primary: #e8e8ed;
+      --text-secondary: #9e9eb0;
+      --text-muted: #6b6b7a;
+      --accent-blue: #4d6ef5;
+      --accent-blue-dim: #3b5de7;
+      --accent-green: #22c55e;
+      --accent-yellow: #eab308;
+      --accent-red: #ef4444;
+      --accent-purple: #a78bfa;
+      --accent-pink: #f472b6;
+      --accent-cyan: #22d3ee;
+      --radius-sm: 6px;
+      --radius-md: 10px;
+      --radius-lg: 14px;
+      --radius-xl: 18px;
+      --shadow-card: 0 1px 3px rgba(0,0,0,0.3), 0 1px 2px rgba(0,0,0,0.4);
+      --shadow-elevated: 0 4px 16px rgba(0,0,0,0.4), 0 2px 4px rgba(0,0,0,0.3);
+      --transition: 200ms cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    * { box-sizing:border-box; margin:0; padding:0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', system-ui, sans-serif;
+      background: var(--bg-primary); color: var(--text-primary);
+      padding: 0; margin: 0; min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+      line-height: 1.6;
+    }
+    /* Layout */
+    .app-wrap { max-width: 1440px; margin: 0 auto; padding: 24px 32px; }
+    @media(max-width:768px){ .app-wrap { padding: 16px; } }
+    /* Top bar */
+    .topbar {
+      display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;
+      margin-bottom: 24px; padding-bottom: 20px; border-bottom: 1px solid var(--border);
+    }
+    .topbar h1 {
+      font-size: 20px; font-weight: 650; letter-spacing: -0.02em;
+      background: linear-gradient(135deg, #e8e8ed, #a78bfa); -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent; background-clip: text;
+    }
+    .topbar-actions { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+    /* Status line */
+    .status-line {
+      display:flex; align-items:center; gap:16px; flex-wrap:wrap;
+      padding: 10px 16px; background: var(--bg-card); border-radius: var(--radius-md);
+      border:1px solid var(--border); margin-bottom: 20px; font-size: 13px; color: var(--text-secondary);
+    }
+    .status-dot { width:7px; height:7px; border-radius:50%; display:inline-block; margin-right:5px; }
+    .status-dot.green { background: var(--accent-green); box-shadow:0 0 6px rgba(34,197,94,0.3); }
+    .status-dot.blue { background: var(--accent-blue); box-shadow:0 0 6px rgba(77,110,245,0.3); }
+    .status-dot.gray { background: var(--text-muted); }
+    .badge {
+      display:inline-flex; align-items:center; gap:5px; padding:2px 9px; border-radius:20px;
+      font-size:11px; font-weight:600; border:1px solid transparent;
+    }
+    .badge-green { background: rgba(34,197,94,0.12); color:var(--accent-green); border-color:rgba(34,197,94,0.25); }
+    .badge-blue { background: rgba(77,110,245,0.12); color:var(--accent-blue); border-color:rgba(77,110,245,0.25); }
+    .badge-gray { background: rgba(107,107,122,0.15); color:var(--text-muted); border-color:rgba(107,107,122,0.2); }
+    .badge-red { background: rgba(239,68,68,0.12); color:var(--accent-red); border-color:rgba(239,68,68,0.25); }
+    .badge-yellow { background: rgba(234,179,8,0.12); color:var(--accent-yellow); border-color:rgba(234,179,8,0.25); }
+    .badge-purple { background: rgba(167,139,250,0.12); color:var(--accent-purple); border-color:rgba(167,139,250,0.25); }
+    /* Stat Cards Grid */
+    .stats-grid {
+      display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); gap:12px; margin-bottom:24px;
+    }
+    .stat-card {
+      background: var(--bg-card); border:1px solid var(--border); border-radius:var(--radius-lg);
+      padding:16px 18px; transition:var(--transition); cursor:default;
+      position:relative; overflow:hidden;
+    }
+    .stat-card:hover { border-color:var(--border-hover); background:var(--bg-card-hover); transform:translateY(-1px); box-shadow:var(--shadow-elevated); }
+    .stat-card .stat-icon { font-size:18px; margin-bottom:6px; opacity:0.7; }
+    .stat-card .stat-value { font-size:24px; font-weight:650; letter-spacing:-0.03em; line-height:1.2; color:var(--text-primary); }
+    .stat-card .stat-label { font-size:12px; color:var(--text-muted); margin-top:2px; }
+    .stat-card .stat-trend { font-size:11px; margin-top:4px; display:flex; align-items:center; gap:4px; }
+    .stat-card .stat-trend.up { color:var(--accent-green); }
+    .stat-card .stat-trend.down { color:var(--accent-red); }
+    .stat-card .stat-trend.neutral { color:var(--text-muted); }
+    /* Search & Filters */
+    .search-bar {
+      display:flex; gap:8px; flex-wrap:wrap; align-items:center;
+      padding:14px 16px; background:var(--bg-card); border:1px solid var(--border);
+      border-radius:var(--radius-lg); margin-bottom:20px;
+    }
+    .search-bar input, .search-bar select {
+      padding:8px 12px; background:var(--bg-input); border:1px solid var(--border);
+      border-radius:var(--radius-sm); color:var(--text-primary); font-size:13px;
+      outline:none; transition:var(--transition);
+    }
+    .search-bar input:focus, .search-bar select:focus { border-color:var(--accent-blue); box-shadow:0 0 0 3px rgba(77,110,245,0.12); }
+    .search-bar input { flex:1; min-width:160px; }
+    .search-bar .scope-select { min-width:160px; }
+    /* Buttons */
+    .btn {
+      display:inline-flex; align-items:center; gap:6px; padding:7px 14px;
+      border-radius:var(--radius-sm); font-size:13px; font-weight:550;
+      border:1px solid transparent; cursor:pointer; transition:var(--transition);
+      white-space:nowrap; text-decoration:none;
+    }
+    .btn:active { transform:scale(0.97); }
+    .btn:disabled { opacity:0.4; cursor:not-allowed; transform:none; }
+    .btn-primary { background:var(--accent-blue); color:#fff; border-color:var(--accent-blue); }
+    .btn-primary:hover { background:var(--accent-blue-dim); border-color:var(--accent-blue-dim); }
+    .btn-secondary { background:var(--bg-input); color:var(--text-secondary); border-color:var(--border); }
+    .btn-secondary:hover { background:var(--bg-card-hover); color:var(--text-primary); border-color:var(--border-hover); }
+    .btn-success { background:rgba(34,197,94,0.12); color:var(--accent-green); border-color:rgba(34,197,94,0.25); }
+    .btn-success:hover { background:rgba(34,197,94,0.2); }
+    .btn-danger { background:rgba(239,68,68,0.12); color:var(--accent-red); border-color:rgba(239,68,68,0.25); }
+    .btn-danger:hover { background:rgba(239,68,68,0.2); }
+    .btn-warning { background:rgba(234,179,8,0.12); color:var(--accent-yellow); border-color:rgba(234,179,8,0.25); }
+    .btn-warning:hover { background:rgba(234,179,8,0.2); }
+    .btn-ghost { background:var(--accent-purple); color:var(--accent-purple); background:rgba(167,139,250,0.1); border-color:rgba(167,139,250,0.2); }
+    .btn-ghost:hover { background:rgba(167,139,250,0.18); }
+    .btn-sm { padding:4px 10px; font-size:12px; }
+    /* Health Section (collapsible cards) */
+    .health-section {
+      background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius-lg);
+      padding:20px; margin-bottom:20px;
+    }
+    .health-section h2 {
+      font-size:15px; font-weight:600; margin-bottom:14px; color:var(--text-primary);
+      display:flex; align-items:center; gap:8px;
+    }
+    .health-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:12px; }
+    .health-item {
+      display:flex; align-items:center; justify-content:space-between;
+      padding:10px 12px; background:var(--bg-input); border-radius:var(--radius-md);
+      border:1px solid var(--border); font-size:13px;
+    }
+    .health-item .health-label { color:var(--text-secondary); }
+    .health-item .health-value { font-weight:550; }
+    .health-item .health-bar {
+      width:100%; height:4px; background:var(--bg-primary); border-radius:2px;
+      margin-top:6px; overflow:hidden;
+    }
+    .health-item .health-bar-fill { height:100%; border-radius:2px; transition:width 0.6s ease; }
+    /* Memory List - Professional Data Table */
+    .memory-table-wrap {
+      background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius-lg);
+      overflow:hidden; margin-bottom:16px;
+    }
+    .memory-table { width:100%; border-collapse:collapse; font-size:13px; }
+    .memory-table thead {
+      position:sticky; top:0; z-index:2;
+    }
+    .memory-table th {
+      text-align:left; padding:10px 14px; font-weight:550; font-size:11px;
+      text-transform:uppercase; letter-spacing:0.04em; color:var(--text-muted);
+      background:var(--bg-card); border-bottom:1px solid var(--border);
+    }
+    .memory-table td {
+      padding:10px 14px; border-bottom:1px solid var(--border); color:var(--text-secondary);
+      vertical-align:middle;
+    }
+    .memory-table tbody tr { transition:var(--transition); }
+    .memory-table tbody tr:nth-child(even) { background:var(--bg-table-stripe); }
+    .memory-table tbody tr:hover { background:var(--bg-card-hover); }
+    .memory-table .mem-content { color:var(--text-primary); max-width:340px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .memory-table .mem-content .highlight { background:rgba(77,110,245,0.2); color:var(--accent-blue); border-radius:2px; padding:0 2px; }
+    .memory-table .mem-actions { display:flex; gap:4px; justify-content:flex-end; }
+    .memory-table .mem-actions .btn { opacity:0.6; transition:var(--transition); }
+    .memory-table tr:hover .mem-actions .btn { opacity:1; }
+    /* Pagination */
+    .pagination-wrap {
+      display:flex; justify-content:center; gap:4px; padding:12px 0;
+    }
+    .pagination-wrap a {
+      display:inline-flex; align-items:center; justify-content:center;
+      min-width:32px; height:32px; border-radius:var(--radius-sm);
+      font-size:13px; color:var(--text-secondary); text-decoration:none;
+      border:1px solid var(--border); transition:var(--transition);
+    }
+    .pagination-wrap a:hover { border-color:var(--border-hover); color:var(--text-primary); background:var(--bg-card-hover); }
+    .pagination-wrap a.active { background:var(--accent-blue); color:#fff; border-color:var(--accent-blue); }
+    /* Tiers & badges in table */
+    .tier-badge { display:inline-flex; padding:1px 7px; border-radius:4px; font-size:10px; font-weight:650; }
+    .tier-hot { background:rgba(244,114,182,0.15); color:var(--accent-pink); border:1px solid rgba(244,114,182,0.25); }
+    .tier-warm { background:rgba(34,211,238,0.12); color:var(--accent-cyan); border:1px solid rgba(34,211,238,0.2); }
+    .tier-cold { background:rgba(129,140,248,0.12); color:#818cf8; border:1px solid rgba(129,140,248,0.2); }
+    .tier-standard { background:rgba(107,107,122,0.12); color:var(--text-muted); border:1px solid rgba(107,107,122,0.2); }
+    .type-badge { display:inline-flex; padding:1px 7px; border-radius:4px; font-size:10px; font-weight:550; background:var(--bg-input); color:var(--text-secondary); border:1px solid var(--border); }
+    /* Modals & overlays */
+    .modal-overlay {
+      display:none; position:fixed; inset:0; z-index:9000;
+      background:rgba(0,0,0,0.6); backdrop-filter:blur(4px);
+      animation:fadeIn 150ms ease;
+    }
+    .modal-box {
+      position:fixed; top:50%; left:50%; transform:translate(-50%,-50%);
+      z-index:9001; background:var(--bg-card); border:1px solid var(--border);
+      border-radius:var(--radius-xl); padding:24px; width:520px; max-width:90vw;
+      box-shadow:0 16px 48px rgba(0,0,0,0.5); animation:scaleIn 200ms ease;
+    }
+    .modal-box h3 { font-size:16px; font-weight:600; margin-bottom:12px; color:var(--text-primary); }
+    .modal-box textarea { width:100%; height:120px; background:var(--bg-input); color:var(--text-primary); border:1px solid var(--border); border-radius:var(--radius-sm); padding:10px; font-size:13px; margin:8px 0; resize:vertical; }
+    .modal-box textarea:focus { outline:none; border-color:var(--accent-blue); box-shadow:0 0 0 3px rgba(77,110,245,0.12); }
+    .modal-box select { width:100%; padding:8px; background:var(--bg-input); color:var(--text-primary); border:1px solid var(--border); border-radius:var(--radius-sm); margin-bottom:12px; }
+    .modal-actions { display:flex; gap:8px; justify-content:flex-end; }
+    /* Galaxy button */
+    .galaxy-btn {
+      padding:8px 18px; border-radius:var(--radius-md); border:none;
+      background:linear-gradient(135deg,#1a0533,#2d1b69); color:#c8b8ff; font-size:13px; font-weight:600;
+      cursor:pointer; white-space:nowrap; transition:var(--transition);
+      box-shadow:0 0 16px rgba(100,60,200,0.2);
+    }
+    .galaxy-btn:hover { box-shadow:0 0 24px rgba(100,60,200,0.4); transform:translateY(-1px); }
+    /* Empty state */
+    .empty-state { text-align:center; padding:40px 20px; color:var(--text-muted); }
+    .empty-state .empty-icon { font-size:36px; margin-bottom:8px; opacity:0.5; }
+    .empty-state p { font-size:14px; }
+    /* Animations */
+    @keyframes fadeIn { from{opacity:0} to{opacity:1} }
+    @keyframes scaleIn { from{opacity:0;transform:translate(-50%,-50%) scale(0.95)} to{opacity:1;transform:translate(-50%,-50%) scale(1)} }
+    @keyframes slideUp { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+    .slide-in { animation:slideUp 300ms ease both; }
+    /* Toast */
+    .toast-container { position:fixed; bottom:24px; right:24px; z-index:99999; display:flex; flex-direction:column; gap:8px; }
+    .toast {
+      padding:12px 18px; border-radius:var(--radius-md); background:var(--bg-card);
+      border:1px solid var(--border); box-shadow:var(--shadow-elevated);
+      font-size:13px; color:var(--text-primary); animation:slideUp 200ms ease both;
+      display:flex; align-items:center; gap:8px; max-width:360px;
+    }
+    .toast-success { border-color:rgba(34,197,94,0.3); }
+    .toast-error { border-color:rgba(239,68,68,0.3); }
+    /* Responsive table scroll */
+    .table-scroll { overflow-x:auto; }
+    @media(max-width:768px){ .stats-grid{grid-template-columns:repeat(2,1fr)} }
+    /* Link style */
+    .link { color:var(--accent-blue); text-decoration:none; font-size:13px; transition:var(--transition); }
+    .link:hover { color:#6b8aff; text-decoration:underline; }
+    .link-purple { color:var(--accent-purple); }
+    .link-green { color:var(--accent-green); }
+    /* Legacy class preservation */
     .flex-row { display:flex; gap:16px; flex-wrap:wrap; }
     .flex-col { flex:1; min-width:320px; }
-    .list-item { margin-bottom:12px; background:#2a2a2a; padding:10px; border-radius:6px; border:1px solid #444; }
-    .list-item a { color:#4da6ff; text-decoration:none; }
-    .list-item .content { color:#ddd; }
-    .btn-sm { padding:4px 8px; border-radius:4px; cursor:pointer; border:none; }
-    .btn-danger { background:#ff4d4d; color:white; }
-    .btn-success { background:#28a745; color:white; }
-    .pagination a { margin:0 5px; padding:5px 10px; color:white; text-decoration:none; border-radius:4px; display:inline-block; }
-    .pagination .active { background:#4da6ff; }
-    .pagination .inactive { background:#333; }
-    .error-box { margin:8px 0 0; padding:10px; background:#3a1d1d; border:1px solid #8b2b2b; border-radius:6px; color:#fecaca; }
-    .tier-hot { display:inline-block; padding:1px 7px; border-radius:4px; font-size:10px; font-weight:700; background:#3b1a2f; color:#ff6b9d; border:1px solid #5a2a48; }
-    .tier-warm { display:inline-block; padding:1px 7px; border-radius:4px; font-size:10px; font-weight:700; background:#1a2f3b; color:#6ec6ff; border:1px solid #2a4a5a; }
-    .tier-cold { display:inline-block; padding:1px 7px; border-radius:4px; font-size:10px; font-weight:700; background:#1a1a2e; color:#818cf8; border:1px solid #2a2a48; }
-    .tier-standard { display:inline-block; padding:1px 7px; border-radius:4px; font-size:10px; font-weight:700; background:#2a2a2a; color:#9ca3af; border:1px solid #444; }
-    .feedback-btn { padding:2px 8px; border-radius:4px; cursor:pointer; border:1px solid #444; background:#1e1e1e; color:#999; font-size:11px; margin-left:4px; }
-    .feedback-btn:hover { border-color:#888; color:#fff; }
-    .feedback-btn.on { border-color:#4da6ff; color:#4da6ff; background:#1a2538; }
-    .editor-modal { display:none; position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); z-index:1000; background:#1e1e1e; border:1px solid #444; border-radius:10px; padding:20px; width:500px; max-width:90%; box-shadow:0 8px 40px rgba(0,0,0,0.6); }
-    .editor-modal textarea { width:100%; height:120px; background:#121212; color:#ddd; border:1px solid #444; border-radius:6px; padding:8px; font-size:13px; margin:8px 0; }
-    .merge-checkbox { margin-right:6px; transform:scale(1.2); }
+    .banner { margin:14px 0; padding:10px 14px; border-radius:var(--radius-md); font-size:13px; }
+    .banner-green { background:rgba(34,197,94,0.08); border:1px solid rgba(34,197,94,0.2); color:var(--accent-green); }
+    .banner-yellow { background:rgba(234,179,8,0.08); border:1px solid rgba(234,179,8,0.2); color:var(--accent-yellow); }
+    .banner-blue { background:rgba(77,110,245,0.08); border:1px solid rgba(77,110,245,0.2); color:var(--accent-blue); }
+    .error-box { padding:10px 14px; background:rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.25); border-radius:var(--radius-md); color:var(--accent-red); font-size:13px; }
+    .feedback-btn { padding:2px 8px; border-radius:4px; cursor:pointer; border:1px solid var(--border); background:var(--bg-input); color:var(--text-muted); font-size:11px; }
+    .feedback-btn:hover { border-color:var(--border-hover); }
+    .feedback-btn.on { border-color:var(--accent-blue); color:var(--accent-blue); background:rgba(77,110,245,0.1); }
+    .merge-checkbox { margin-right:6px; transform:scale(1.2); accent-color:var(--accent-blue); }
   </style>
 </head>
 <body>
-  <!-- Editor Modal -->
-  <div id="editorModal" class="editor-modal">
-    <h3 style="margin:0 0 8px; color:#ddd;">✏️ Edit Memory</h3>
-    <input id="editId" type="hidden">
-    <textarea id="editContent" placeholder="Memory content..."></textarea>
-    <select id="editType" style="width:100%; padding:6px; background:#121212; color:#ddd; border:1px solid #444; border-radius:4px; margin-bottom:10px;">
-      <option value="conversation">conversation</option>
-      <option value="fact">fact</option>
-      <option value="preference">preference</option>
-      <option value="project">project</option>
-      <option value="skill">skill</option>
-    </select>
-    <div style="display:flex; gap:8px; justify-content:flex-end;">
-      <button onclick="document.getElementById('editorModal').style.display='none'" style="padding:6px 14px; border-radius:4px; border:1px solid #444; background:#1e1e1e; color:#999; cursor:pointer;">Cancel</button>
-      <button id="editorSaveBtn" onclick="saveEdit()" style="padding:6px 14px; border-radius:4px; border:none; background:#4da6ff; color:white; cursor:pointer;">Save</button>
-    </div>
-  </div>
-  <div style="display:flex; align-items:center; gap:16px; flex-wrap:wrap;">
-  <h1 style="flex:1; min-width:200px;">Memory Dashboard (Messages: {{ total_items }} |
-    {% if watchdog_pending_value is not none and watchdog_pending_value > 0 %}
-    <span class="badge-green"><span class="dot"></span>Watchdog pending: {{ watchdog_pending_value }}</span>
-    {% elif watchdog_pending_value is not none %}
-    <span class="badge-blue"><span class="dot"></span>Watchdog pending: 0</span>
-    {% else %}
-    <span class="badge-gray">Watchdog pending: n/a</span>
-    {% endif %}
-  )</h1>
-  <button id="galaxyToggleBtn" onclick="toggleGalaxy()" style="padding:10px 20px; border-radius:8px; border:none; background:linear-gradient(135deg,#1a0533,#2d1b69); color:#c8b8ff; font-size:14px; font-weight:600; cursor:pointer; white-space:nowrap; box-shadow:0 0 16px rgba(100,60,200,0.3); transition:all 0.3s;">🌌 Memory Galaxy</button>
-  </div>
-  <p style="margin:6px 0 4px; color:#bcd;">Watchdog status updated: {{ watchdog_updated_text }}</p>
-  <p style="margin:0 0 14px; color:#9ec8ff;">{{ watchdog_progress_text }}</p>
-  {% if watchdog_last_error %}
-  <div class="error-box">{{ watchdog_last_error }}</div>
-  {% endif %}
+ <div class="modal-overlay" id="editorOverlay" onclick="document.getElementById('editorOverlay').style.display='none';document.getElementById('editorModal').style.display='none'"></div>
+ <div id="editorModal" class="modal-box" style="display:none;">
+   <h3>✏️ Edit Memory</h3>
+   <input id="editId" type="hidden">
+   <textarea id="editContent" placeholder="Memory content..."></textarea>
+   <select id="editType">
+     <option value="conversation">conversation</option><option value="fact">fact</option>
+     <option value="preference">preference</option><option value="project">project</option>
+     <option value="skill">skill</option>
+   </select>
+   <div class="modal-actions">
+     <button class="btn btn-secondary" onclick="document.getElementById('editorOverlay').style.display='none';document.getElementById('editorModal').style.display='none'">Cancel</button>
+     <button class="btn btn-primary" onclick="saveEdit()">Save</button>
+   </div>
+ </div>
+ <div class="toast-container" id="toastContainer"></div>
+ <div class="app-wrap">
 
-  {% if optimizer_msg %}<div class="banner banner-green">{{ optimizer_msg }}</div>{% endif %}
-  {% if dry_run_msg %}<div class="banner banner-yellow">{{ dry_run_msg }}</div>{% endif %}
-  {% if restore_msg %}<div class="banner banner-blue">{{ restore_msg }}</div>{% endif %}
+ <div class="topbar">
+   <h1>Memory Dashboard</h1>
+   <div class="topbar-actions">
+     <span class="badge {{ 'badge-green' if watchdog_pending_value is not none and watchdog_pending_value > 0 else 'badge-blue' if watchdog_pending_value is not none else 'badge-gray' }}">
+       <span class="status-dot {{ 'green' if watchdog_pending_value is not none and watchdog_pending_value > 0 else 'blue' if watchdog_pending_value is not none else 'gray' }}"></span>
+       WD: {{ watchdog_pending_value if watchdog_pending_value is not none else 'n/a' }}
+     </span>
+     <span class="badge badge-purple">{{ total_items }} memories</span>
+     <button id="galaxyToggleBtn" class="galaxy-btn" onclick="toggleGalaxy()">🌌 Memory Galaxy</button>
+   </div>
+ </div>
 
-  <form method="get" action="/dashboard">
-    <input type="text" name="query" placeholder="Search..." value="{{ query }}">
-    <select name="selected_scope" class="scope-select">
+ <div class="status-line">
+   <span><span class="status-dot {{ 'green' if watchdog_pending_value is not none and watchdog_pending_value > 0 else 'blue' }}"></span>Watchdog: {{ watchdog_updated_text }}</span>
+   <span>{{ watchdog_progress_text }}</span>
+   <span style="color:var(--text-muted)">{{ selected_scope_label }} ({{ selected_scope_total_count }})</span>
+   {% if watchdog_last_error %}<span class="badge badge-red">⚠ {{ watchdog_last_error[:60] }}</span>{% endif %}
+ </div>
+
+ <!-- Stat Cards -->
+ <div class="stats-grid slide-in" style="animation-delay:0.05s">
+   <div class="stat-card"><div class="stat-icon">🧠</div><div class="stat-value">{{ total_items }}</div><div class="stat-label">Total Memories</div><div class="stat-trend neutral">Across {{ galaxy_tenants|length }} scopes</div></div>
+   <div class="stat-card"><div class="stat-icon">🔵</div><div class="stat-value">{{ tier_stats.hot }}</div><div class="stat-label">Hot Memories</div><div class="stat-trend up">↑ Active recall</div></div>
+   <div class="stat-card"><div class="stat-icon">🟡</div><div class="stat-value">{{ tier_stats.warm }}</div><div class="stat-label">Warm Memories</div><div class="stat-trend neutral">Recent access</div></div>
+   <div class="stat-card"><div class="stat-icon">🔴</div><div class="stat-value">{{ tier_stats.cold }}</div><div class="stat-label">Cold Memories</div><div class="stat-trend down">Archival candidates</div></div>
+   <div class="stat-card"><div class="stat-icon">📋</div><div class="stat-value">{{ review.summary.pending_count }}</div><div class="stat-label">Pending Review</div><div class="stat-trend {% if review.summary.pending_count > 0 %}up{% else %}neutral{% endif %}">{% if review.summary.pending_count > 0 %}Needs attention{% else %}All clear{% endif %}</div></div>
+   <div class="stat-card"><div class="stat-icon">📦</div><div class="stat-value">{{ review.summary.recent_archived_count }}</div><div class="stat-label">Recently Archived</div><div class="stat-trend neutral">Last 30d</div></div>
+ </div>
+
+ {% if optimizer_msg %}<div class="banner banner-green slide-in">{{ optimizer_msg }}</div>{% endif %}
+ {% if dry_run_msg %}<div class="banner banner-yellow slide-in">{{ dry_run_msg }}</div>{% endif %}
+ {% if restore_msg %}<div class="banner banner-blue slide-in">{{ restore_msg }}</div>{% endif %}
+
+ <!-- Search -->
+ <form method="get" action="/dashboard" class="search-bar slide-in" style="animation-delay:0.1s">
+   <input type="text" name="query" placeholder="Search memories..." value="{{ query }}">
+   <select name="selected_scope" class="scope-select">
       {% for val, label in scope_options %}
       <option value="{{ val }}"{% if val == active_scope %} selected{% endif %}>{{ label }}</option>
       {% endfor %}
@@ -109,19 +335,24 @@
     <input type="hidden" name="health_stale_days" value="{{ safe_health_stale_days }}">
     <input type="hidden" name="health_confidence_threshold" value="{{ "%.2f"|format(safe_health_confidence) }}">
     <input type="hidden" name="health_limit" value="{{ safe_health_limit }}">
-    <button type="submit">Search</button>
+    <button type="submit" class="btn btn-primary">Search</button>
   </form>
 
-  <div class="health-box">
-    <h2>Memory Health</h2>
-    <p>App version: {{ version_info.version }}</p>
-    <p>Update status: {{ "update available" if update_status.get('available') else "up to date" }}</p>
-    <p>Auto update enabled: {{ AUTO_UPDATE_ENABLED }} | Auto apply: {{ AUTO_UPDATE_APPLY }} | Interval: {{ AUTO_UPDATE_INTERVAL_SECONDS }}s</p>
-    <p>Pending review: {{ review.summary.pending_count }} | Recently archived: {{ review.summary.recent_archived_count }}</p>
-    <p style="color:#e6d992;">Dry-run forecast: would decay {{ dry_run.would_decay_count }} | would archive {{ dry_run.would_archive_count }}</p>
-    <p>Memory tiers: <span class="tier-hot">Hot {{ tier_stats.hot }}</span> <span class="tier-warm">Warm {{ tier_stats.warm }}</span> <span class="tier-standard">Standard {{ tier_stats.standard }}</span> <span class="tier-cold">Cold {{ tier_stats.cold }}</span>
-    | <a href="/graph/entities" target="_blank" style="color:#a78bfa;">Knowledge Graph</a>
-    | <a href="/nudge" target="_blank" style="color:#6ee7b7;">Nudge</a></p>
+  <div class="health-section slide-in" style="animation-delay:0.15s">
+    <h2>🩺 Memory Health & Controls</h2>
+    <div class="health-grid">
+      <div class="health-item"><span class="health-label">App Version</span><span class="health-value">{{ version_info.version }}</span></div>
+      <div class="health-item"><span class="health-label">Update</span><span class="health-value badge {{ 'badge-yellow' if update_status.get('available') else 'badge-green' }}">{{ "update available" if update_status.get('available') else "up to date" }}</span></div>
+      <div class="health-item"><span class="health-label">Auto Update</span><span class="health-value">{{ "ON" if AUTO_UPDATE_ENABLED else "OFF" }} ({{ AUTO_UPDATE_INTERVAL_SECONDS }}s)</span></div>
+      <div class="health-item"><span class="health-label">Pending Review</span><span class="health-value">{{ review.summary.pending_count }}</span></div>
+      <div class="health-item"><span class="health-label">Recently Archived</span><span class="health-value">{{ review.summary.recent_archived_count }}</span></div>
+      <div class="health-item"><span class="health-label">Dry-Run Forecast</span><span class="health-value badge {{ 'badge-yellow' if dry_run.would_decay_count > 0 else 'badge-green' }}">decay {{ dry_run.would_decay_count }} / archive {{ dry_run.would_archive_count }}</span></div>
+      <div class="health-item"><span class="health-label">Memory Quality</span><span class="health-value">
+        <span class="tier-badge tier-hot">Hot {{ tier_stats.hot }}</span>
+        <span class="tier-badge tier-warm">Warm {{ tier_stats.warm }}</span>
+        <span class="tier-badge tier-cold">Cold {{ tier_stats.cold }}</span>
+      </span></div>
+    </div>
 
     <form method="post" action="/update/run_from_dashboard" style="margin:10px 0;">
       <input type="hidden" name="query" value="{{ query }}">
@@ -130,10 +361,10 @@
       <input type="hidden" name="health_stale_days" value="{{ safe_health_stale_days }}">
       <input type="hidden" name="health_confidence_threshold" value="{{ safe_health_confidence }}">
       <input type="hidden" name="health_limit" value="{{ safe_health_limit }}">
-      <button type="submit" style="background:#4e8f6c; color:#fff;">Run App Update</button>
+      <button type="submit" class="btn btn-success">Run App Update</button>
     </form>
 
-    <p><a href="/version">Open Version JSON</a> | <a href="/update/status">Open Update Status JSON</a></p>
+    <p><a href="/version" class="link">Version JSON</a> · <a href="/update/status" class="link">Update Status</a> · <a href="/graph/entities" target="_blank" class="link link-purple">Knowledge Graph</a> · <a href="/nudge" target="_blank" class="link link-green">Nudge</a></p>
 
     <form method="get" action="/dashboard" style="margin:10px 0; display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
       <input type="hidden" name="page" value="{{ page }}">
@@ -148,45 +379,45 @@
       <label style="font-size:0.9rem;">Rows:
         <input type="number" min="1" max="50" name="health_limit" value="{{ safe_health_limit }}" style="width:70px; margin-left:6px;">
       </label>
-      <button type="submit" style="background:#3a78d4;">Apply Filters</button>
+      <button type="submit" class="btn btn-secondary" style="background:#3a78d4;">Apply Filters</button>
     </form>
 
-    <form method="post" action="/optimizer/run_from_dashboard" style="margin:10px 0;">
-      <input type="hidden" name="query" value="{{ query }}">
-      <input type="hidden" name="selected_scope" value="{{ active_scope }}">
-      <input type="hidden" name="page" value="{{ page }}">
-      <input type="hidden" name="health_stale_days" value="{{ safe_health_stale_days }}">
-      <input type="hidden" name="health_confidence_threshold" value="{{ safe_health_confidence }}">
-      <input type="hidden" name="health_limit" value="{{ safe_health_limit }}">
-      <button type="submit" style="background:#f0b429; color:#111;">Run Optimizer Now</button>
-    </form>
+    <div style="display:flex; gap:8px; flex-wrap:wrap; margin:10px 0;">
+      <form method="post" action="/optimizer/run_from_dashboard" style="display:inline;">
+        <input type="hidden" name="query" value="{{ query }}">
+        <input type="hidden" name="selected_scope" value="{{ active_scope }}">
+        <input type="hidden" name="page" value="{{ page }}">
+        <input type="hidden" name="health_stale_days" value="{{ safe_health_stale_days }}">
+        <input type="hidden" name="health_confidence_threshold" value="{{ safe_health_confidence }}">
+        <input type="hidden" name="health_limit" value="{{ safe_health_limit }}">
+        <button type="submit" class="btn btn-warning">⚡ Run Optimizer</button>
+      </form>
+      <form method="post" action="/optimizer/dry_run_from_dashboard" style="display:inline;">
+        <input type="hidden" name="query" value="{{ query }}">
+        <input type="hidden" name="selected_scope" value="{{ active_scope }}">
+        <input type="hidden" name="page" value="{{ page }}">
+        <input type="hidden" name="health_stale_days" value="{{ safe_health_stale_days }}">
+        <input type="hidden" name="health_confidence_threshold" value="{{ safe_health_confidence }}">
+        <input type="hidden" name="health_limit" value="{{ safe_health_limit }}">
+        <button type="submit" class="btn btn-secondary">🔍 Preview Dry Run</button>
+      </form>
+      <form method="post" action="/optimizer/undo_latest_manual_archive_from_dashboard" style="display:inline;">
+        <input type="hidden" name="query" value="{{ query }}">
+        <input type="hidden" name="selected_scope" value="{{ active_scope }}">
+        <input type="hidden" name="page" value="{{ page }}">
+        <input type="hidden" name="health_stale_days" value="{{ safe_health_stale_days }}">
+        <input type="hidden" name="health_confidence_threshold" value="{{ safe_health_confidence }}">
+        <input type="hidden" name="health_limit" value="{{ safe_health_limit }}">
+        <button type="submit" class="btn btn-secondary" {% if not latest_manual_batch_id %}disabled{% endif %}>↩️ Undo Archive</button>
+      </form>
+    </div>
+    <p style="margin:4px 0; color:var(--text-muted); font-size:12px;">Latest manual batch: {{ latest_manual_batch_id or 'none' }}</p>
 
-    <form method="post" action="/optimizer/dry_run_from_dashboard" style="margin:10px 0;">
-      <input type="hidden" name="query" value="{{ query }}">
-      <input type="hidden" name="selected_scope" value="{{ active_scope }}">
-      <input type="hidden" name="page" value="{{ page }}">
-      <input type="hidden" name="health_stale_days" value="{{ safe_health_stale_days }}">
-      <input type="hidden" name="health_confidence_threshold" value="{{ safe_health_confidence }}">
-      <input type="hidden" name="health_limit" value="{{ safe_health_limit }}">
-      <button type="submit" style="background:#9aa3af; color:#111;">Preview Dry Run</button>
-    </form>
-
-    <form method="post" action="/optimizer/undo_latest_manual_archive_from_dashboard" style="margin:10px 0;">
-      <input type="hidden" name="query" value="{{ query }}">
-      <input type="hidden" name="selected_scope" value="{{ active_scope }}">
-      <input type="hidden" name="page" value="{{ page }}">
-      <input type="hidden" name="health_stale_days" value="{{ safe_health_stale_days }}">
-      <input type="hidden" name="health_confidence_threshold" value="{{ safe_health_confidence }}">
-      <input type="hidden" name="health_limit" value="{{ safe_health_limit }}">
-      <button type="submit" style="background:#5e77a8; color:#fff;" {% if not latest_manual_batch_id %}disabled{% endif %}>Undo Last Manual Archive</button>
-    </form>
-    <p style="margin:4px 0; color:#b5c4df; font-size:0.9rem;">Latest manual batch: {{ latest_manual_batch_id or 'none' }}</p>
-
-    <p><a href="/optimizer/review?limit={{ safe_health_limit }}&stale_days={{ safe_health_stale_days }}&confidence_threshold={{ "%.2f"|format(safe_health_confidence) }}&selected_scope={{ active_scope }}">Open Raw Review JSON</a></p>
+    <p><a href="/optimizer/review?limit={{ safe_health_limit }}&stale_days={{ safe_health_stale_days }}&confidence_threshold={{ "%.2f"|format(safe_health_confidence) }}&selected_scope={{ active_scope }}" class="link">Raw Review JSON</a></p>
 
     <div class="flex-row">
       <div class="flex-col">
-        <h3 style="margin:8px 0;">Pending Review</h3>
+        <h3 style="margin:8px 0; font-size:14px; font-weight:600;">Pending Review</h3>
         <form method="post" action="/optimizer/archive_selected_from_dashboard" style="margin:0;">
           <input type="hidden" name="query" value="{{ query }}">
           <input type="hidden" name="selected_scope" value="{{ active_scope }}">
@@ -194,36 +425,39 @@
           <input type="hidden" name="health_stale_days" value="{{ safe_health_stale_days }}">
           <input type="hidden" name="health_confidence_threshold" value="{{ safe_health_confidence }}">
           <input type="hidden" name="health_limit" value="{{ safe_health_limit }}">
-          <ul style="margin-top:0;">
+          <ul style="list-style:none; padding:0; margin-top:8px;">
             {% if review.pending_review %}
             {% for item in review.pending_review[:safe_health_limit] %}
-            <li style="margin:6px 0; padding:8px; border:1px solid #444; border-radius:6px;">
-              <label style="display:block;">
-                <input type="checkbox" name="selected_page_ids" value="{{ item.id }}" style="margin-right:8px;">
-                <b>#{{ item.id }}</b> [{{ item.memory_type }}]
-                confidence={{ "%.2f"|format(item.confidence) }}, age={{ "%.1f"|format(item.age_days) }}d, reason: {{ item.review_reason }}<br>
-                <span style="color:#bbb">{{ item.content[:120] }}</span>
+            <li style="margin:6px 0; padding:10px; border:1px solid var(--border); border-radius:var(--radius-md); background:var(--bg-input);">
+              <label style="display:flex; gap:8px; cursor:pointer;">
+                <input type="checkbox" name="selected_page_ids" value="{{ item.id }}" class="merge-checkbox" style="margin-top:2px;">
+                <div style="flex:1;">
+                  <div style="font-size:13px; font-weight:550;">#{{ item.id }} <span class="type-badge">{{ item.memory_type }}</span>
+                  <span class="tier-badge {% if item.confidence < 0.3 %}tier-cold{% elif item.confidence < 0.6 %}tier-warm{% else %}tier-hot{% endif %}">{{ "%.0f"|format(item.confidence*100) }}%</span>
+                  <span style="color:var(--text-muted); font-size:11px;">{{ "%.1f"|format(item.age_days) }}d old · {{ item.review_reason }}</span></div>
+                  <div style="color:var(--text-secondary); font-size:12px; margin-top:2px;">{{ item.content[:120] }}</div>
+                </div>
               </label>
             </li>
             {% endfor %}
             {% else %}
-            <li style="color:#9ad29a;">No pending stale/low-confidence memories.</li>
+            <li style="color:var(--accent-green); font-size:13px; padding:8px 0;">✓ No pending stale/low-confidence memories.</li>
             {% endif %}
           </ul>
-          <button type="submit" style="background:#b85c3b; margin-top:8px;">Archive Selected</button>
+          <button type="submit" class="btn btn-danger" style="margin-top:6px;">📦 Archive Selected</button>
         </form>
       </div>
       <div class="flex-col">
-        <h3 style="margin:8px 0;">Recently Archived</h3>
-        <ul style="margin-top:0;">
+        <h3 style="margin:8px 0; font-size:14px; font-weight:600;">Recently Archived</h3>
+        <ul style="list-style:none; padding:0; margin-top:8px;">
           {% if review.archived_recent %}
           {% for item in review.archived_recent[:5] %}
-          <li style="margin:6px 0; padding:8px; border:1px solid #444; border-radius:6px;">
-            page_id={{ item.page_id }} reason: {{ item.archive_reason }} ({{ "%.1f"|format(item.days_since_archived) }}d ago)
+          <li style="margin:6px 0; padding:8px; border:1px solid var(--border); border-radius:var(--radius-md); font-size:12px; color:var(--text-secondary);">
+            <b>#{{ item.page_id }}</b> · {{ item.archive_reason }} · {{ "%.1f"|format(item.days_since_archived) }}d ago
           </li>
           {% endfor %}
           {% else %}
-          <li style="color:#bbb;">No recent archives yet.</li>
+          <li style="color:var(--text-muted); font-size:13px; padding:8px 0;">No recent archives yet.</li>
           {% endif %}
         </ul>
       </div>
@@ -239,38 +473,64 @@
     {% endif %}
   </div>
 
-  <div style="margin:8px 0;">
-    <button onclick="mergeSelected()" style="padding:6px 14px; border-radius:4px; border:1px solid #a78bfa; background:#1a1a2e; color:#a78bfa; cursor:pointer; font-size:12px;">🔗 Merge Selected</button>
-    <span style="color:#666; font-size:11px; margin-left:8px;">Check memories above to merge</span>
+  <div style="margin:8px 0; display:flex; align-items:center; gap:12px;">
+    <button onclick="mergeSelected()" class="btn btn-ghost btn-sm">🔗 Merge Selected</button>
+    <span style="color:var(--text-muted); font-size:12px;">Check memories below to merge</span>
   </div>
 
-  <ul>
-    {% for r in rows %}
-    <li class="list-item">
-      <input type="checkbox" class="merge-checkbox" value="{{ r[0] }}">
-      <a href="/page_html?page_id={{ r[0] }}">[{{ r[0] }}]</a>
-      <span class="content">{{ r[1][:100] }}</span>
-      <span style="float:right; display:flex; gap:4px; align-items:center;">
-        <button class="feedback-btn" onclick="feedback({{ r[0] }},true,this)" title="Helpful">👍</button>
-        <button class="feedback-btn" onclick="feedback({{ r[0] }},false,this)" title="Not helpful">👎</button>
-        <button class="btn-sm" style="background:#4da6ff;color:white;" onclick="openEditor({{ r[0] }})">✏️</button>
-        <form action="/delete" method="post" style="display:inline; margin:0;">
-          <input type="hidden" name="page_id" value="{{ r[0] }}">
-          <button type="submit" class="btn-sm btn-danger" onclick="return confirm('Delete?')">🗑️</button>
-        </form>
-      </span>
-    </li>
-    {% endfor %}
-  </ul>
+  <div class="memory-table-wrap slide-in" style="animation-delay:0.2s">
+    <div class="table-scroll">
+    <table class="memory-table">
+      <thead>
+        <tr>
+          <th style="width:30px"><input type="checkbox" class="merge-checkbox" onchange="document.querySelectorAll('.merge-checkbox').forEach(c=>c.checked=this.checked)"></th>
+          <th style="width:60px">ID</th>
+          <th>Content</th>
+          <th style="width:80px">Type</th>
+          <th style="width:70px">Confidence</th>
+          <th style="width:70px">Importance</th>
+          <th style="width:120px">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        <tr>
+          <td><input type="checkbox" class="merge-checkbox" value="{{ r[0] }}"></td>
+          <td><a href="/page_html?page_id={{ r[0] }}" class="link" style="font-weight:550;">#{{ r[0] }}</a></td>
+          <td><div class="mem-content" title="{{ r[1] }}">{{ r[1][:120] }}{% if r[1]|length > 120 %}…{% endif %}</div></td>
+          <td><span class="type-badge">—</span></td>
+          <td><span class="tier-badge tier-standard">—</span></td>
+          <td><span class="tier-badge tier-standard">—</span></td>
+          <td>
+            <div class="mem-actions">
+              <button class="btn btn-sm btn-ghost feedback-btn" onclick="feedback({{ r[0] }},true,this)" title="Helpful">👍</button>
+              <button class="btn btn-sm btn-ghost feedback-btn" onclick="feedback({{ r[0] }},false,this)" title="Not helpful">👎</button>
+              <button class="btn btn-sm btn-ghost" onclick="openEditor({{ r[0] }})" title="Edit">✏️</button>
+              <form action="/delete" method="post" style="display:inline; margin:0;">
+                <input type="hidden" name="page_id" value="{{ r[0] }}">
+                <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Delete this memory?')" title="Delete">🗑️</button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="7"><div class="empty-state"><div class="empty-icon">📭</div><p>No memories found</p></div></td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </div>
 
-  <div style="margin:20px 0;">
+  <div class="pagination-wrap">
     {% if total_pages > 1 %}
     {% for i in range(1, total_pages + 1) %}
     <a href="/dashboard?page={{ i }}&query={{ query }}&selected_scope={{ active_scope }}&health_stale_days={{ safe_health_stale_days }}&health_confidence_threshold={{ "%.2f"|format(safe_health_confidence) }}&health_limit={{ safe_health_limit }}"
-       class="pagination {{ 'active' if i == page else 'inactive' }}">{{ i }}</a>
+       class="{{ 'active' if i == page else '' }}">{{ i }}</a>
     {% endfor %}
     {% endif %}
   </div>
+
+</div>
 
 <!-- ───── Memory Galaxy Overlay ───── -->
 <div id="galaxyOverlay" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; z-index:9999; background:#0a0a12; cursor:default;">
@@ -323,7 +583,12 @@ function mergeSelected() {
   var f = new FormData(); ids.forEach(id => f.append('source_ids', id));
   if(!confirm('Merge ' + ids.length + ' memories into one?')) return;
   fetch('/memory/merge', {method:'POST', body:f})
-    .then(r=>r.json()).then(d=>{ if(d.status==='ok') location.reload() }).catch(()=>{});
+    .then(r=>r.json()).then(d=>{ if(d.status==='ok') showToast('✅ Merged ' + ids.length + ' memories'); location.reload() }).catch(()=>{});
+}
+function showToast(msg, type) {
+  var t = document.createElement('div'); t.className = 'toast' + (type==='error'?' toast-error':' toast-success');
+  t.textContent = msg; document.getElementById('toastContainer').appendChild(t);
+  setTimeout(()=>{ t.style.opacity='0'; setTimeout(()=>t.remove(),300); }, 3000);
 }
 </script>
 

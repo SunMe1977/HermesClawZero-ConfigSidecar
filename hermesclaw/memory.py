@@ -13,6 +13,7 @@ from hermesclaw.scoring import (
 )
 from hermesclaw.graph import process_memory_for_graph
 from hermesclaw.consolidation import store_compressed_version
+from hermesclaw.hooks import registry
 
 logger = logging.getLogger("hermesclaw.memory")
 client = ollama.Client(host=OLLAMA_HOST)
@@ -168,21 +169,79 @@ def _capture_with_graph(
     chat_id: str | None = None,
     body=None,
 ):
-    """Capture memory and extract entities + relationships. Called by /capture endpoint."""
-    result = _capture_sync(text, scope_id, chat_id, body)
+    """Capture memory with LLM fact extraction + entity extraction. 
+    Only stores if LLM identifies it as a meaningful fact (not small talk).
+    """
+    capture_text = text if text is not None else (body.text if body else None)
+    if not capture_text or not capture_text.strip():
+        raise HTTPException(status_code=400, detail="text is required")
+    capture_scope_id = scope_id
+    capture_chat_id = chat_id
+
+    # LLM fact check
+    try:
+        fact_check = _llm_fact_check(capture_text)
+        if not fact_check.get("is_fact", True):
+            logger.debug("LLM fact check skipped non-fact: %s", capture_text[:80])
+            return {
+                "status": "skipped",
+                "reason": fact_check.get("reason", "not a meaningful fact"),
+                "text": capture_text[:200],
+            }
+        if fact_check.get("summary"):
+            capture_text = fact_check["summary"]
+    except Exception as ex:
+        logger.debug("LLM fact check failed (non-fatal, storing raw): %s", ex)
+
+    # beforeSave hook
+    hook_result = registry.run("beforeSave", capture_text, scope_id=capture_scope_id, chat_id=capture_chat_id)
+    if hook_result is None:
+        return {"status": "skipped", "reason": "blocked by beforeSave hook"}
+    if isinstance(hook_result, tuple):
+        capture_text, capture_scope_id, capture_chat_id = hook_result[0], hook_result[1] or capture_scope_id, hook_result[2] or capture_chat_id
+
+    result = _capture_sync(capture_text, capture_scope_id, capture_chat_id, body)
     if result.get("status") in ("ok", "ok_degraded") and "page_id" in result:
         page_id = result["page_id"]
         try:
             with connect_db() as conn:
-                # Entity extraction (cold path — no LLM dependency)
-                process_memory_for_graph(conn, result.get("content", text or ""), page_id)
-                # Compress + version
-                store_compressed_version(conn, page_id, result.get("content", text or ""))
+                process_memory_for_graph(conn, capture_text, page_id, use_llm=True, llm_generate=client.generate)
+                store_compressed_version(conn, page_id, capture_text)
                 conn.commit()
         except Exception as ex:
             logger.warning("Graph/consolidation post-capture failed (non-fatal): %s", ex)
         result["graph_processed"] = True
+        # afterSave hook
+        try:
+            registry.run("afterSave", result.get("page_id"), text=capture_text, scope_id=capture_scope_id)
+        except Exception as ex:
+            logger.debug("afterSave hook error (non-fatal): %s", ex)
     return result
+
+
+def _llm_fact_check(text: str) -> dict:
+    """Use Ollama to check if text contains a meaningful fact worth storing.
+    Returns dict with is_fact, summary, reason, confidence.
+    """
+    prompt = (
+        "Determine if the following text contains a meaningful, storable fact "
+        "(a preference, project detail, decision, instruction, or personal info).\n"
+        "If YES: return {\"is_fact\": true, \"summary\": \"<concise 1-sentence summary>\", \"type\": \"<preference|project|fact|instruction|personal>\", \"confidence\": <0-1>}\n"
+        "If NO (small talk, greeting, vague statement): return {\"is_fact\": false, \"reason\": \"<why>\"}\n"
+        "Return ONLY valid JSON, no other text.\n\n"
+        f"Text: {text[:1500]}"
+    )
+    resp = client.generate(model="llama3.1:8b", prompt=prompt)
+    raw = resp["response"].strip()
+    if raw.startswith("```"):
+        raw = raw.split("\n", 1)[-1].rsplit("\n", 1)[0]
+    try:
+        result = json.loads(raw)
+        if not isinstance(result, dict):
+            return {"is_fact": False, "reason": "invalid LLM response"}
+        return result
+    except (json.JSONDecodeError, KeyError):
+        return {"is_fact": True}
 
 
 def _capture_batch_sync(body):

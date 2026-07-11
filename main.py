@@ -14,8 +14,11 @@ from hermesclaw.auth import (
     validate_security_startup, _is_rate_limited, _client_ip,
     WATCHDOG_STATUS,
 )
-from hermesclaw.db import ensure_phase1_schema, cleanup_orphaned_embeddings, close_db_pool
+from hermesclaw.db import ensure_phase1_schema, cleanup_orphaned_embeddings, close_db_pool, connect_db
 from hermesclaw.optimizer import run_decay_and_archive_once, run_tier_assignment
+from hermesclaw.dedup import find_and_merge_duplicates
+from hermesclaw.reflection import analyze_memories
+from hermesclaw.episodic import ensure_episodic_schema
 from hermesclaw.update import get_update_status, run_update
 from hermesclaw.importer import import_hermes_sessions
 from hermesclaw.routes import router
@@ -32,7 +35,7 @@ async def url_api_key_middleware(request: Request, call_next):
     exempt_prefixes = (
         "/docs/", "/dashboard", "/delete", "/export",
         "/tag_auto/", "/page_html", "/optimizer/", "/update/",
-        "/import", "/graph", "/feedback", "/search", "/memory", "/nudge",
+        "/import", "/graph", "/feedback", "/search", "/memory", "/nudge", "/episodic",
     )
 
     if path in exempt_exact_paths or any(path.startswith(p) for p in exempt_prefixes):
@@ -78,6 +81,13 @@ def decay_loop() -> None:
                 logger.info("[TIER] %s", tiers.get("tiers"))
             except Exception as tier_ex:
                 logger.warning("[TIER] error: %s", tier_ex)
+            # Run auto-dedup every cycle
+            try:
+                dedup = find_and_merge_duplicates()
+                if dedup["hard_dedup"] > 0 or dedup["soft_merge"] > 0:
+                    logger.info("[DEDUP] hard=%s soft=%s", dedup["hard_dedup"], dedup["soft_merge"])
+            except Exception as dex:
+                logger.debug("[DEDUP] error (non-fatal): %s", dex)
         except Exception as ex:
             logger.exception("[OPTIMIZER] error: %s", ex)
         _shutdown_event.wait(DECAY_INTERVAL_SECONDS)
@@ -137,6 +147,9 @@ def startup_event():
 
     try:
         ensure_phase1_schema()
+        # Ensure episodic schema
+        with connect_db() as conn:
+            ensure_episodic_schema(conn)
         orphaned_deleted = cleanup_orphaned_embeddings()
         logger.info("[SCHEMA] cleanup_orphaned_embeddings deleted=%s", orphaned_deleted)
         run_decay_and_archive_once()

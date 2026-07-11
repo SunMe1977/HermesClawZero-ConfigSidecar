@@ -29,7 +29,10 @@ from hermesclaw.optimizer import (
     archive_selected_pages, get_latest_manual_archive_batch_id, restore_archive_batch,
 )
 from hermesclaw.importer import import_hermes_sessions
-from hermesclaw.graph import query_entity_graph, get_memories_for_entity, get_top_entities
+from hermesclaw.graph import query_entity_graph, get_memories_for_entity, get_top_entities, graph_rag_search
+from hermesclaw.dedup import find_and_merge_duplicates
+from hermesclaw.reflection import analyze_memories
+from hermesclaw.episodic import ensure_episodic_schema, record_episode, get_timeline
 from hermesclaw.update import get_update_status, run_update, get_version_info
 
 logger = logging.getLogger("hermesclaw.routes")
@@ -454,6 +457,55 @@ async def run_optimizer_tiers_now():
     """Recalculate memory tiers and run consolidation."""
     stats = await run_in_threadpool(run_tier_assignment)
     return {"status": "ok", "tiers": stats}
+
+
+@router.post("/optimizer/dedup", dependencies=[Depends(get_current_username)])
+async def run_optimizer_dedup(dry_run: bool = False):
+    """Auto-merge duplicate/similar memories."""
+    result = await run_in_threadpool(lambda: find_and_merge_duplicates(dry_run=dry_run))
+    return {"status": "ok", "dedup": result}
+
+
+@router.post("/optimizer/reflect", dependencies=[Depends(get_current_username)])
+async def run_optimizer_reflect():
+    """Analyze all memories for contradictions and generate scope summaries."""
+    import ollama
+    from hermesclaw.config import OLLAMA_HOST
+    _client = ollama.Client(host=OLLAMA_HOST)
+    with connect_db() as conn:
+        result = analyze_memories(conn, llm_generate=_client.generate)
+    return {"status": "ok", "reflection": result}
+
+
+@router.get("/episodic/timeline", dependencies=[Depends(get_current_username)])
+async def episodic_timeline(scope_id: str | None = None, project: str | None = None,
+                            limit: int = 50, days_back: int | None = None):
+    """Get episodic memory timeline."""
+    with connect_db() as conn:
+        timeline = get_timeline(conn, scope_id=scope_id, project=project, limit=limit, days_back=days_back)
+    return {"status": "ok", "timeline": timeline}
+
+
+@router.post("/episodic/record", dependencies=[Depends(get_current_username)])
+async def episodic_record(title: str = Form(...), description: str = Form(""),
+                          episode_type: str = Form("event"), scope_id: str | None = Form(None),
+                          project: str | None = Form(None)):
+    """Manually record an episodic memory."""
+    with connect_db() as conn:
+        eid = record_episode(conn, title=title, description=description, episode_type=episode_type,
+                             scope_id=scope_id, project=project)
+    return {"status": "ok", "episode_id": eid}
+
+
+@router.get("/graph/rag", dependencies=[Depends(get_current_username)])
+async def graph_rag(q: str = ""):
+    """GraphRAG: search memories via entity graph traversal."""
+    if not q:
+        return {"status": "ok", "results": []}
+    entities = [e.strip() for e in q.replace(",", " ").split() if len(e.strip()) > 2]
+    with connect_db() as conn:
+        results = graph_rag_search(conn, entities, query_text=q)
+    return {"status": "ok", "results": results, "query_entities": entities}
 
 
 @router.get("/optimizer/dry_run", dependencies=[Depends(get_current_username)])
