@@ -2,9 +2,12 @@
 """HermesClawZero Memory CLI — capture, search & autosave via Sidecar API.
 
 Usage:
-    python memory.py capture "<text>" [scope_id]
+    python memory.py capture "<text>" [scope_id] [--success-flag]
     python memory.py search "<query>" [limit=5]
-    python memory.py autosave "<text>" [filename]
+    python memory.py autosave "<text>" [filename] [--success-flag]
+
+The --success-flag option makes commands output a clean "MEMORY_SAVED=ok"
+line that agents can parse as a deterministic success signal.
 """
 import json
 import logging
@@ -141,8 +144,16 @@ def autosave(text: str, filename: str | None = None) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
-def _show_result(data: Any) -> None:
-    """Pretty-print API result to stdout."""
+def _show_result(data: Any, success_flag: bool = False) -> None:
+    """Pretty-print API result to stdout.
+
+    When success_flag is True, emits a deterministic MEMORY_SAVED=
+    line that agents can parse as a reliable success signal.
+    """
+    if success_flag:
+        # Emit a machine-parseable success signal first
+        print("MEMORY_SAVED=ok")
+
     if isinstance(data, list):
         for item in data:
             content = item.get("content") or item.get("page_content") or ""
@@ -154,33 +165,43 @@ def _show_result(data: Any) -> None:
         print(json.dumps(data, ensure_ascii=False, default=str))
 
 
+def _has_flag(flag: str) -> bool:
+    """Check if a flag exists in sys.argv and remove it if found."""
+    for i, arg in enumerate(sys.argv[:]):
+        if arg == flag:
+            sys.argv.pop(i)
+            return True
+    return False
+
+
 def main() -> None:
     if len(sys.argv) < 2:
         print(__doc__.strip(), file=sys.stderr)
         sys.exit(1)
 
     cmd = sys.argv[1]
+    success_flag = _has_flag("--success-flag")
 
     try:
         if cmd == "capture":
             if len(sys.argv) < 3:
-                print('Usage: memory.py capture "<text>" [scope_id]', file=sys.stderr)
+                print('Usage: memory.py capture "<text>" [scope_id] [--success-flag]', file=sys.stderr)
                 sys.exit(1)
             r = capture(sys.argv[2], sys.argv[3] if len(sys.argv) > 3 else None)
-            _show_result(r)
+            _show_result(r, success_flag)
 
         elif cmd == "search":
             query = sys.argv[2] if len(sys.argv) > 2 else ""
             limit = int(sys.argv[3]) if len(sys.argv) > 3 else 5
             r = search(query, limit)
-            _show_result(r)
+            _show_result(r, success_flag)
 
         elif cmd == "autosave":
             if len(sys.argv) < 3:
-                print('Usage: memory.py autosave "<text>" [filename]', file=sys.stderr)
+                print('Usage: memory.py autosave "<text>" [filename] [--success-flag]', file=sys.stderr)
                 sys.exit(1)
             r = autosave(sys.argv[2], sys.argv[3] if len(sys.argv) > 3 else None)
-            _show_result(r)
+            _show_result(r, success_flag)
 
         else:
             print(f"Unknown command: {cmd}", file=sys.stderr)

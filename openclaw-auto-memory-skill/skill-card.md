@@ -1,5 +1,5 @@
 ---
-description: "Automatically saves chat context to HermesClawZero persistent memory via PostgreSQL+pgvector. Captures facts, loads history on new sessions, and maintains the DB via background jobs. Requires explicit env-config (MEM_PUBLIC_URL + API_KEY) and user approval for cron setup."
+description: "Your agent remembers everything across sessions — no more repeating preferences, project context, or past decisions. Installs ready-to-use capture triggers so the agent saves facts automatically, loads context on new chats, and can back up session history on demand. Requires HermesClawZero Sidecar (local, private, PostgreSQL+pgvector)."
 tags:
   - memory
   - hermes
@@ -7,6 +7,8 @@ tags:
   - vector-search
   - pgvector
   - embeddings
+  - context
+  - continuity
 categories:
   - agents
   - knowledge
@@ -16,6 +18,7 @@ topics:
   - Chat Persistence
   - pgvector
   - Embeddings
+  - Cross-Session Context
 keywords:
   - memory
   - hermes-claw-zero
@@ -26,45 +29,48 @@ keywords:
   - openclaw-memory
   - pgvector-store
   - conversation-context
+  - context-retention
+  - session-continuity
+  - agent-memory
 ---
 
 # HermesClawZero Auto Memory
 
-Persist conversation context across sessions using HermesClawZero — a local, privacy-first memory backend.
+**Never repeat yourself again.** Your agent remembers preferences, project details, past decisions, and important facts across every conversation.
 
-## Quick Overview
+## What happens when you install?
 
-- **Auto-Capture** — saves new facts, instructions, and project details automatically
-- **Auto-Load** — retrieves relevant context when a new session starts  
-- **Semantic Search** — hybrid vector + lexical search via pgvector
-- **Privacy-first** — all data stays local; no third-party data sharing
-- **Cron jobs** — optional; user must explicitly enable
+1. **New chats start with context** — agent silently loads relevant past memories before responding
+2. **Facts save automatically** — deterministic triggers capture preferences, instructions, project details, errors, corrections
+3. **On-demand backups** — ask and the agent saves full session history
+4. **Everything stays local** — your data never leaves your machine
 
-## Architecture
+## Who is this for?
 
-```
-OpenClaw Agent → memory.py (CLI) → HermesClawZero Sidecar (FastAPI)
-                                          → PostgreSQL + pgvector
-                                          → Ollama (embeddings via nomic-embed-text)
-```
-
-## Use Cases
-
-| Scenario | How it helps |
+| You want... | This skill does it |
 |---|---|
-| **Cross-session continuity** | Agent remembers user preferences across chats |
-| **Project context** | Project details persist between work sessions |
-| **Knowledge base** | Store and retrieve facts via semantic search |
-| **Session backup** | Full chat history snapshots on demand |
+| Agent to remember your name without re-introducing | ✅ Captured on first mention |
+| Project context to carry between work sessions | ✅ Project details stored permanently |
+| Not to re-explain your tech setup every chat | ✅ Config/preferences auto-saved |
+| Full chat backups you can search later | ✅ autosave command |
+| Privacy (no cloud memory) | ✅ Everything runs locally |
 
-## Installation
+## Quick Example
 
-```bash
-openclaw skills install hermesclawzero-auto-memory
+```
+You: "I'm working on DiskRaptor v0.3, UI tests are the main focus"
+Agent: *silently captures: "DiskRaptor v0.3: focus on UI tests"*
+
+Next session, you open a fresh chat:
+Agent: *silently loads: "DiskRaptor v0.3: focus on UI tests"*
+Agent: "Welcome back! Want to continue on DiskRaptor UI tests?"
 ```
 
-Then configure `.env` with `MEM_PUBLIC_URL` and `API_KEY`.
+## Requirements
+
+- HermesClawZero Sidecar running (Docker)
+- `MEM_PUBLIC_URL` + `API_KEY` configured in `.env`
 
 ## Repository
 
-Source: [github.com/SunMe1977/HermesClawZero-ConfigSidecar](https://github.com/SunMe1977/HermesClawZero-ConfigSidecar)
+[github.com/SunMe1977/HermesClawZero-ConfigSidecar](https://github.com/SunMe1977/HermesClawZero-ConfigSidecar)
