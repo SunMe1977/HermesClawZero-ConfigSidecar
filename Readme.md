@@ -5,281 +5,162 @@
 ![Docker](https://img.shields.io/badge/docker-required-2496ED.svg)
 
 # HermesClaw Zero-Config Sidecar
-## 🧠 Give Hermes & OpenClaw a Persistent Brain
-Zero-configuration long-term memory powered by PostgreSQL + pgvector.
 
-- ✅ Works in minutes
-- ✅ Windows + Linux
-- ✅ Fully local / self-hosted
-- ✅ Docker-based setup
-- ✅ Open source
+**PostgreSQL‑backed long‑term memory for Hermes & OpenClaw — with a live Dashboard.**  
+Spin up Docker, open `http://localhost:8010/dashboard`, and your agent instantly remembers across sessions.  
+No API keys, no cloud, no config — just `docker compose up`.
 
-The HermesClawZero-ConfigSidecar is a practical sidecar that gives AI agents durable, queryable long-term memory.
+---
 
-## Why You'll Love It
-- 🧠 AI remembers conversations across sessions
-- ⚡ Quick setup with minimal config
-- 🐳 Docker-first deployment
-- 💾 PostgreSQL + pgvector persistence
-- 🔍 Semantic search for memory recall
-- 🔒 Self-hosted and private
-- 🌍 Windows + Linux support
-- 🤖 Built for Hermes + OpenClaw workflows
+## 🚀 10‑Second Start
 
-## What Problem Does This Solve?
-Without persistent memory:
-- ❌ AI forgets previous sessions
-- ❌ Important details are lost over time
-- ❌ Context windows become expensive
-- ❌ Long projects lose continuity
-
-HermesClaw solves this by giving each AI workflow a persistent PostgreSQL-backed memory layer.
-
-## Workflow At A Glance
-```mermaid
-flowchart TD
-  U[User] --> H[Hermes / OpenClaw]
-  H --> S[HermesClaw Sidecar API]
-  S --> P[(PostgreSQL + pgvector)]
-  P --> F[Future conversations remember context]
+```bash
+git clone https://github.com/SunMe1977/HermesClawZero-ConfigSidecar.git
+cd HermesClawZero-ConfigSidecar
+docker compose --profile ollama up -d --build
 ```
 
-## Quick Start
-Run the setup script for your OS. It verifies dependencies, creates `.env`, and can optionally set up Ollama.
+**Open the Dashboard →** [`http://localhost:8010/dashboard`](http://localhost:8010/dashboard)  
+*(Default login: `admin` / `HermesDash!2026` — change in `.env`)*
 
-### Fastest Start (Hermes/OpenClaw)
-Paste this into Hermes or OpenClaw:
+---
 
-```text
-Install this project from GitHub:
-https://github.com/SunMe1977/HermesClawZero-ConfigSidecar
+## 📊 Dashboard — Your Memory HQ
+
+The **Dashboard** is the main entry point for everything your agent remembers:
+
+| Feature | What you can do |
+|---------|----------------|
+| **Memory Timeline** | Browse all captured memories chronologically |
+| **Semantic Search** | Find memories by meaning, not keywords |
+| **Tenant Isolation** | Each scope/chat gets its own view — no data leaks |
+| **Memory Types** | Filter by `conversation`, `skill`, `project`, `system` |
+| **Quick Capture** | Manually add facts directly from the browser |
+| **Export** | Download memory snapshots anytime |
+
+> 🖼️ Dashboard live — screenshot below.
+
+---
+
+## 🧠 What It Does
+
+| Problem | Without Sidecar | With Sidecar |
+|---------|----------------|--------------|
+| Session continuity | Agent forgets everything on restart | Remembers facts, preferences, decisions |
+| Context cost | Long histories burn tokens | Semantic search finds *relevant* memories |
+| Setup effort | Manual vector DB, embeddings, API keys | Docker + Ollama, zero config, zero cost |
+
+**Workflow:** User ↔ Agent ↔ Sidecar API ↔ PostgreSQL + pgvector
+
+---
+
+## 🔧 CLI Tools (power users)
+
+```bash
+python memory.py capture "fact to remember"        # Save a memory
+python memory.py search "query" 5                  # Search memories
+python memory.py autosave "text" "backup.md"       # Backup a session
 ```
 
-![Setup CLI](images/setup-cli.png "Setup CLI")
+---
 
-### Manual Setup
-- Windows: `setup.bat`
-- Linux/macOS: `bash setup.sh`
+## 🧩 MCP Server
 
-### Start the Stack
-- Windows: `start.bat`
-- Linux/macOS: `./start.sh`
-- API docs: `http://localhost:8010/docs`
-- Dashboard: `http://localhost:8010/dashboard`
-- Health: `http://localhost:8010/healthz`
+6 tools for Claude Desktop, Hermes, VS Code, and any MCP client:
 
-## Runtime Provider Override (Compose-First)
-Runtime provider precedence in Compose:
-1. `COMPOSE_AI_PROVIDER`
-2. `AI_PROVIDER`
-3. fallback `openrouter`
+```bash
+pip install mcp requests
+python mcp_server.py
+```
 
-Effective runtime expression:
-`AI_PROVIDER=${COMPOSE_AI_PROVIDER:-${AI_PROVIDER:-openrouter}}`
+| Tool | Description |
+|------|-------------|
+| `capture_memory` / `search_memory` | Read & write memories |
+| `list_recent` / `memory_stats` | Browse & analyze |
+| `delete_memory` / `review_memories` | Manage & synthesize |
 
-Example:
+**Register with Hermes:** `hermes mcp add hermesclawzero --command "python C:\dev\HermesClawZero-ConfigSidecar\mcp_server.py"`
+
+---
+
+## ⚙️ Advanced — Provider & Config
+
+<details>
+<summary>Click to expand</summary>
+
+### Provider Support
+
+| Mode | `AI_PROVIDER` | Embeddings | Key Required |
+|------|---------------|------------|-------------|
+| **Local (recommended)** | `ollama` | `nomic-embed-text` | None |
+| OpenAI | `openai` | OpenAI | `OPENAI_API_KEY` |
+| Gemini | `gemini` | Gemini | `GEMINI_API_KEY` |
+| Anthropic | `anthropic` | Via embedding provider | `ANTHROPIC_API_KEY` |
+| OpenRouter | `openrouter` | OpenRouter | `OPENROUTER_API_KEY` |
+
+### Compose Provider Override
+
 ```bash
 COMPOSE_AI_PROVIDER=openrouter docker compose up -d --force-recreate api
 ```
 
-Windows + Ollama remains compatible when `.env` contains `AI_PROVIDER=ollama`.
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `API_KEY` | — | Required for all protected endpoints |
+| `DB_PASSWORD` | — | PostgreSQL password |
+| `AI_PROVIDER` | `ollama` | `ollama` \| `openai` \| `gemini` \| `anthropic` \| `openrouter` |
+| `MEM_PUBLIC_URL` | `http://localhost:8010` | Base URL for client scripts |
+| `OLLAMA_HOST` | `http://host.docker.internal:11434` | Ollama endpoint |
+| `AUTO_UPDATE_ENABLED` | `false` | Auto-pull from GitHub |
+| `DASHBOARD_PASSWORD` | `HermesDash!2026` | Basic Auth for dashboard |
+
+### Security
+
+- Multi-tenant isolation via `chat_id` + `scope_id`
+- API: `x-api-key` header or `?key=` query param
+- Dashboard: Basic Auth
+- Rate limiting: 30 req/min `/capture`, 60 req/min `/search`
+
+</details>
 
 ---
 
-## Requirements
-- Python 3.11+
-- Docker Desktop
-- Optional: Ollama (local embeddings)
+## 🖼️ Dashboard Screenshot
 
-## Environment Variables
-Set these in `.env` (never commit secrets):
-- `API_KEY` — required for all protected endpoints
-- `DB_PASSWORD` — PostgreSQL password
-- `AI_PROVIDER` — `ollama` (local) | `openai` | `gemini` | `anthropic` | `openrouter`
-- `EMBEDDING_PROVIDER` — `auto` (default, maps from AI_PROVIDER) or specific
-- `MEM_PUBLIC_URL` — base URL for client scripts (default: `http://localhost:8010`)
-- `OLLAMA_HOST` — Ollama endpoint (default: `http://host.docker.internal:11434`)
-- `COMPOSE_AI_PROVIDER` — runtime override for docker-compose (takes precedence)
-- Provider key depending on setup:
-  - `OPENROUTER_API_KEY`
-  - `OPENAI_API_KEY`
-  - `GEMINI_API_KEY`
-  - `ANTHROPIC_API_KEY`
+![Dashboard](images/dashboard.png "Dashboard — memory timeline, search, and tenant isolation")
 
-## Security Notes
-- Multi-tenant isolation is active via `chat_id` + `scope_id` filtering.
-- Dashboard is protected by Basic Auth.
-- API routes use `x-api-key`/`?key=` checks.
-- Keep `.env` private and rotate keys if exposed.
-- **Rate Limiting**: The system uses a custom internal middleware for rate limiting (no external slowapi dependency) to keep the footprint lightweight. Limits are set to 30 requests/minute for /capture and 60 requests/minute for /search. Returning HTTP 429 on exceeding the limit.
-
-## Deployment
-Standard deployment uses Docker Compose (`start.bat` or `./start.sh`).
-
-Recommended verification after start:
-- `http://localhost:8010/healthz`
-- `http://localhost:8010/version`
-
-## Release Hardening Status
-Implemented:
-- Multi-tenant memory isolation (`chat_id` + `scope_id`)
-- OpenRouter retry/backoff + degraded fallback behavior
-- Per-IP rate limiting for `/capture` and `/search`
-- Startup cleanup of orphaned embeddings
-
-Optional next hardening steps:
-- PostgreSQL auth hardening (`scram-sha-256`)
-- Scheduled `pg_dump` backup script
+*The dashboard is available immediately at [`http://localhost:8010/dashboard`](http://localhost:8010/dashboard) after `docker compose up`.*
 
 ---
 
-## Provider Support
-| Mode | AI_PROVIDER | Embeddings | Ollama Required | Keys |
-|------|-------------|------------|-----------------|------|
-| Local Ollama | `ollama` | `nomic-embed-text` | Yes | None |
-| OpenAI | `openai` | OpenAI embeddings | No | `OPENAI_API_KEY` |
-| Gemini | `gemini` | Gemini embeddings | No | `GEMINI_API_KEY` |
-| Anthropic | `anthropic` | via `openrouter`/`openai`/`gemini` | No | `ANTHROPIC_API_KEY` + embedding key |
-| OpenRouter | `openrouter` | OpenRouter embeddings | No | `OPENROUTER_API_KEY` |
+## 📦 What's Included
 
-## Architecture
-Sidecar flow:
-- Agent -> Sidecar API
-- Sidecar API -> PostgreSQL + pgvector
-- Sidecar API -> Embedding/LLM provider
-- Sidecar API -> Dashboard + Optimizer
-- Watchdog -> syncs local files into memory
+| Container | Port | Role |
+|-----------|------|------|
+| `hermesclawzero-configsidecar-api-1` | `:8010` | FastAPI + Dashboard + capture/search |
+| `gbrain-postgres` | `:5666` | PostgreSQL 16 + pgvector |
+| `gbrain-ollama` | `:11435` | Ollama (nomic-embed-text) |
 
-![Architecture](images/architecture-diagram.webp "Architecture diagram")
+**Health:** `curl http://localhost:8010/healthz`
 
-## Feature Comparison
-| Feature | Default Agent Setup | Zero-Config Sidecar |
-|---|---|---|
-| Persistent memory across sessions | Partial | Yes |
-| Self-hosted data path | Varies | Yes |
-| PostgreSQL storage | No | Yes |
-| Dashboard operations | No | Yes |
-| Zero-config setup | No | Yes |
+---
 
-## Product Comparison (Verified)
-Legend:
-- ✅ = explicitly supported / documented
-- ⚠️ = available but not the primary/default path
-- ❌ = not a stated core focus in official docs
+## 📋 Roadmap
 
-| Product | Open Source Core | Self-Host | Managed Cloud Option | PostgreSQL Native Focus | Hermes/OpenClaw Focus | Notes |
-|---|---|---|---|---|---|---|
-| HermesClaw Zero-Config Sidecar | ✅ | ✅ | ❌ | ✅ | ✅ | Built for Hermes/OpenClaw memory workflows |
-| Mem0 | ✅ | ✅ | ✅ | ❌ | ❌ | OSS + self-host + managed platform |
-| gBrain | ✅ | ✅ | ⚠️ | ✅ | ✅ | Strong Hermes/OpenClaw alignment |
-| OpenMemory | ✅ | ✅ | ❌ | ❌ | ❌ | ⚠️ Marked as sunset by maintainers |
-| Chroma | ✅ | ✅ | ✅ | ❌ | ❌ | General vector DB/retrieval stack |
-| Weaviate | ✅ | ✅ | ✅ | ❌ | ❌ | General vector DB + cloud ecosystem |
-| Pinecone | ❌ | ❌ | ✅ | ❌ | ❌ | Managed-first vector platform |
+| Status | Feature |
+|--------|---------|
+| ✅ | PostgreSQL + pgvector, Docker, Dashboard, Multi-tenant, Semantic search, MCP server |
+| ⬜ | Hybrid retrieval (lexical + vector fusion), Knowledge graph, Dashboard UI v2 |
 
-## Why Use This Instead Of Generic Memory Stacks?
-- ✅ Tailored for Hermes + OpenClaw usage
-- ✅ Zero-config, Docker-first local deployment
-- ✅ PostgreSQL-backed persistence with pgvector
-- ✅ Multi-tenant memory isolation already integrated
+---
 
-## What We Still Need (Gap Check)
-- 🧪 Benchmark section with reproducible latency/memory numbers
-- 🎞️ Animated setup/demo GIF for fast product understanding
-- 🔁 Hybrid retrieval implementation (semantic + lexical fusion)
-- 📝 Memory summarization pipeline for long histories
-- 🕸️ Knowledge graph layer for relationship-aware recall
-- 📊 Stronger dashboard UX (more filtering, better timelines)
-- 🚀 GitHub release workflow (`v1.0.0` and ongoing changelog discipline)
-- 🏷️ GitHub topics for discoverability (`hermes`, `openclaw`, `memory`, `pgvector`, etc.)
+## 🤝 Who Is This For?
 
-## Who Is This For?
-- 👩‍💻 AI developers building long-running assistants
-- 🤖 Hermes users
-- 🧩 OpenClaw users
-- 🏠 Self-hosters and local-LLM enthusiasts
-- 🛠️ MCP and agent-workflow developers
+AI developers · Hermes users · OpenClaw users · Self-hosters · MCP enthusiasts
 
-## MCP Server (Model Context Protocol)
-
-The sidecar includes a built-in MCP server for tools like Claude Desktop, VS Code extensions, and MCP-compatible IDEs:
-
-```bash
-# Install deps
-pip install mcp requests
-
-# Run the MCP server
-python mcp_server.py
-```
-
-**Available MCP tools:**
-| Tool | Description |
-|------|-------------|
-| `capture_memory(text)` | Save a new memory to the database |
-| `search_memory(query, limit=5)` | Search stored memories by semantic similarity |
-
-### Register with Hermes Agent
-```bash
-hermes mcp add hermesclawzero --command "python C:\dev\HermesClawZero-ConfigSidecar\mcp_server.py"
-```
-
-### Register with Claude Desktop
-Add to your `claude_desktop_config.json`:
-```json
-{
-  "mcpServers": {
-    "hermesclawzero": {
-      "command": "python",
-      "args": ["C:/dev/HermesClawZero-ConfigSidecar/mcp_server.py"]
-    }
-  }
-}
-```
-
-## Roadmap
-- ✅ PostgreSQL storage
-- ✅ pgvector semantic memory
-- ✅ Docker deployment
-- ✅ Dashboard
-- ✅ Multi-tenant isolation
-- ✅ Semantic search
-- ⬜ Hybrid retrieval
-- ⬜ Memory summarization
-- ⬜ Knowledge graph support
-- ⬜ Dashboard/UI improvements
-- ⬜ MCP auto-discovery improvements
-
-## Project Positioning
-Inspired by recent advances in long-term AI memory, this project focuses on zero-configuration deployment, self-hosting, and practical day-to-day agent usage.
-
-## Tools
-- Ingest: drag-and-drop into `ingest.bat`
-- Maintenance: `maintenance.bat`
-- Capture: `python memory.py capture "text"`
-- Search: `python memory.py search "query"`
-- Autosave: `python memory.py autosave "content" "filename.txt"`
-
-## Database View
-![Database](images/db.png "Database (PostgreSQL)")
-
-## Dashboard
-![Dashboard](images/dashboard.png "Dashboard")
-
-## Troubleshooting
-- 401 Unauthorized: ensure `API_KEY` matches server config.
-- Sync not running: verify `memory_sync.py` process.
-- Missing logs: confirm files are written to `sync/`.
-- Dashboard error: check `http://localhost:8010/healthz` and DB settings.
-
-## FAQ
-### Is this production-ready?
-Yes for self-hosted single-team usage.
-
-### Where is data stored?
-PostgreSQL (`gbrain`) persisted with Docker volume `pgdata`.
-
-### Why does dashboard auth differ from API auth?
-Dashboard uses Basic Auth. API routes use `x-api-key` (or `?key=` where supported).
+---
 
 Built for AI Agent autonomy.
 
@@ -287,8 +168,6 @@ Built for AI Agent autonomy.
 <a href="https://github.com/openclaw/openclaw"><img src="https://openclaw.ai/logo.png" alt="OpenClaw" width="30%"></a>
 <a href="https://ollama.com/"><img src="https://ollama.com/public/ollama.png" alt="Ollama" width="15%"></a>
 
-<ul>
-<li><a href="https://github.com/nousresearch/hermes-agent">Hermes Agent GitHub</a></li>
-<li><a href="https://openclaw.ai">OpenClaw Website</a></li>
-<li><a href="https://ollama.com">Ollama Website</a></li>
-</ul>
+- [Hermes Agent GitHub](https://github.com/nousresearch/hermes-agent)
+- [OpenClaw Website](https://openclaw.ai)
+- [Ollama Website](https://ollama.com)
