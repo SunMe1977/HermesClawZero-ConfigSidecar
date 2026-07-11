@@ -2,7 +2,6 @@
 <html>
 <head>
   <title>Memory Dashboard</title>
-  <meta http-equiv="refresh" content="5">
   <style>
     body { font-family: sans-serif; background-color: #121212; color: #fff; padding: 20px; }
     h1 { border-bottom: 2px solid #333; padding-bottom: 10px; }
@@ -39,7 +38,8 @@
   </style>
 </head>
 <body>
-  <h1>Memory Dashboard (Messages: {{ total_items }} |
+  <div style="display:flex; align-items:center; gap:16px; flex-wrap:wrap;">
+  <h1 style="flex:1; min-width:200px;">Memory Dashboard (Messages: {{ total_items }} |
     {% if watchdog_pending_value is not none and watchdog_pending_value > 0 %}
     <span class="badge-green"><span class="dot"></span>Watchdog pending: {{ watchdog_pending_value }}</span>
     {% elif watchdog_pending_value is not none %}
@@ -48,6 +48,8 @@
     <span class="badge-gray">Watchdog pending: n/a</span>
     {% endif %}
   )</h1>
+  <button id="galaxyToggleBtn" onclick="toggleGalaxy()" style="padding:10px 20px; border-radius:8px; border:none; background:linear-gradient(135deg,#1a0533,#2d1b69); color:#c8b8ff; font-size:14px; font-weight:600; cursor:pointer; white-space:nowrap; box-shadow:0 0 16px rgba(100,60,200,0.3); transition:all 0.3s;">🌌 Memory Galaxy</button>
+  </div>
   <p style="margin:6px 0 4px; color:#bcd;">Watchdog status updated: {{ watchdog_updated_text }}</p>
   <p style="margin:0 0 14px; color:#9ec8ff;">{{ watchdog_progress_text }}</p>
   {% if watchdog_last_error %}
@@ -222,5 +224,483 @@
     {% endfor %}
     {% endif %}
   </div>
+
+<!-- ───── Memory Galaxy Overlay ───── -->
+<div id="galaxyOverlay" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; z-index:9999; background:#0a0a12; cursor:default;">
+  <canvas id="galaxyCanvas" style="display:block; width:100%; height:100%;"></canvas>
+
+  <!-- Close button -->
+  <button onclick="toggleGalaxy()" style="position:fixed; top:16px; right:16px; z-index:10001; padding:8px 18px; border-radius:6px; border:1px solid rgba(200,160,255,0.3); background:rgba(10,10,30,0.7); color:#c8b8ff; font-size:14px; cursor:pointer; backdrop-filter:blur(6px); transition:all 0.2s;">✕ Close Galaxy</button>
+
+  <!-- Galaxy title -->
+  <div style="position:fixed; top:16px; left:50%; transform:translateX(-50%); z-index:10001; text-align:center; pointer-events:none;">
+    <div style="font-size:22px; font-weight:700; background:linear-gradient(90deg,#a78bfa,#6ee7b7); -webkit-background-clip:text; -webkit-text-fill-color:transparent; text-shadow:0 0 40px rgba(167,139,250,0.3);">✦ Memory Galaxy ✦</div>
+    <div style="font-size:13px; color:rgba(200,180,255,0.6); margin-top:2px;">{{ galaxy_total }} memories · {{ galaxy_tenants|length }} tenants</div>
+  </div>
+
+  <!-- Legend -->
+  <div id="galaxyLegend" style="position:fixed; bottom:20px; left:50%; transform:translateX(-50%); z-index:10001; display:flex; gap:20px; flex-wrap:wrap; justify-content:center; pointer-events:none; font-size:12px; color:rgba(200,180,255,0.5);"></div>
+
+  <!-- Hover info card -->
+  <div id="galaxyHoverCard" style="display:none; position:fixed; z-index:10002; padding:12px 16px; border-radius:10px; border:1px solid rgba(200,160,255,0.2); background:rgba(10,8,20,0.88); backdrop-filter:blur(12px); color:#ddd; font-size:13px; max-width:260px; pointer-events:none; box-shadow:0 4px 24px rgba(0,0,0,0.6);">
+    <div id="ghcTenant" style="font-size:11px; color:#a78bfa; font-weight:600; margin-bottom:4px;"></div>
+    <div id="ghcContent" style="font-size:12px; color:#e8e0ff; line-height:1.4; margin-bottom:6px;"></div>
+    <div id="ghcMeta" style="font-size:10px; color:rgba(200,180,255,0.5); display:flex; gap:10px;"></div>
+  </div>
+</div>
+
+<script>
+// ─── Memory Galaxy Animation Engine v2 ────────────────────────────────────
+let _autoRefreshTimer;
+function _startAutoRefresh() { clearTimeout(_autoRefreshTimer); _autoRefreshTimer = setTimeout(() => location.reload(), 5000); }
+_startAutoRefresh();
+
+const GALAXY_DATA = {
+  tenants: {{ galaxy_tenants|tojson }},
+  total: {{ galaxy_total }},
+  highConf: {{ galaxy_high_conf }},
+  medConf: {{ galaxy_med_conf }},
+  lowConf: {{ galaxy_low_conf }},
+};
+
+let C, ctx, W, H, animId, galaxyActive = false;
+const COLORS = ['#ff6b9d','#6ec6ff','#6ee7b7','#fbbf24','#a78bfa','#f472b6','#34d399','#f59e0b','#818cf8','#fb7185','#2dd4bf','#e879f9','#38bdf8','#facc15','#c084fc'];
+const HALF = 0.5, PI2 = Math.PI * 2;
+
+// ─── Interaction state ───
+let mx = 0, my = 0;            // mouse normalized [-1,1]
+let targetZoom = 1, zoom = 1;
+let lastMove = 0;               // timestamp of last mouse move
+let hoverNode = -1, hoverOrbit = -1;
+const TRAIL_LEN = 10;
+
+// ─── Layer depths for parallax ───
+const LAYER = { NEBULA: 0.02, STAR: 0.05, ORBIT: 0.12, NODE: 0.18, CLUSTER: 0.10, CORE: 0.01 };
+
+// ─── Nebula particles ───
+let nebula = [];
+function initNebula(n) {
+  nebula = [];
+  for (let i = 0; i < n; i++) {
+    nebula.push({
+      x: Math.random(), y: Math.random(),
+      r: 40 + Math.random() * 120,
+      dx: (Math.random() - 0.5) * 0.0002,
+      dy: (Math.random() - 0.5) * 0.0002,
+      color: [['#1a0a3e','#2d1b69','#0d1b3e','#3a1a5e'][i % 4]],
+      alpha: 0.03 + Math.random() * 0.06,
+      phase: Math.random() * PI2,
+    });
+  }
+}
+
+// ─── Stars with depth layers ───
+let stars = [];
+function initStars(count) {
+  stars = [];
+  for (let i = 0; i < count; i++) {
+    const depth = Math.random();
+    stars.push({
+      x: Math.random(), y: Math.random(),
+      r: depth * 1.8 + 0.2,
+      a: depth * 0.7 + 0.15,
+      speed: 0.005 + depth * 0.025,
+      phase: Math.random() * PI2,
+      depth: depth, // 0=background, 1=foreground
+    });
+  }
+}
+
+// ─── Orbit system ───
+let orbits = [];
+function buildOrbits() {
+  orbits = [];
+  const tenants = GALAXY_DATA.tenants;
+  const n = Math.max(1, tenants.length);
+  const maxMem = Math.max(1, ...tenants.map(t => t.count));
+
+  tenants.forEach((t, i) => {
+    const color = COLORS[i % COLORS.length];
+    const radius = 0.12 + (i / Math.max(1, n - 1)) * 0.38;
+    const nodeCount = Math.max(3, Math.min(40, Math.round((t.count / maxMem) * 30) + 5));
+    const nodes = [];
+
+    for (let j = 0; j < nodeCount; j++) {
+      const theta = (j / nodeCount) * PI2 + Math.random() * 0.1;
+      nodes.push({
+        theta, radiusOffset: (Math.random() - 0.5) * 0.02,
+        size: Math.random() * 3 + 1.5,
+        pulsePhase: Math.random() * PI2, pulseSpeed: 0.005 + Math.random() * 0.02,
+        trail: [],  // glow trail positions
+        label: `Memory #${(i * 100) + j}`,
+        tenant: t.name,
+        ts: new Date(Date.now() - Math.random() * 7 * 86400000).toLocaleDateString(),
+        tags: ['auto', 'capture', t.name.slice(0,3)],
+      });
+    }
+
+    orbits.push({
+      name: t.name, count: t.count, radius, color,
+      angleOffset: (i / n) * PI2,
+      speed: (0.12 + Math.random() * 0.18) * (i % 2 === 0 ? 1 : -1),
+      tilt: 0.55 + Math.random() * 0.35, nodes,
+    });
+  });
+
+  // Build legend
+  const leg = document.getElementById('galaxyLegend');
+  if (leg) leg.innerHTML = orbits.map((o,i) =>
+    `<span style="display:flex;align-items:center;gap:6px"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${o.color};box-shadow:0 0 6px ${o.color}"></span>${o.name} (${o.count})</span>`
+  ).join('');
+}
+
+// ─── Memory clusters ───
+let clusters = [];
+function buildClusters() {
+  clusters = [];
+  orbits.forEach(o => {
+    for (let c = 0; c < 3; c++) {
+      const ang = Math.random() * PI2;
+      const dist = o.radius + (Math.random() - 0.5) * 0.04;
+      clusters.push({
+        x: Math.cos(ang) * dist, y: Math.sin(ang) * dist * o.tilt,
+        size: 8 + Math.random() * 14, color: o.color,
+        alpha: 0.06 + Math.random() * 0.14,
+        pulsePhase: Math.random() * PI2, pulseSpeed: 0.005 + Math.random() * 0.01,
+        driftAngle: Math.random() * PI2, driftSpeed: 0.002 + Math.random() * 0.003,
+        orbitRef: o,
+      });
+    }
+  });
+}
+
+// ─── Resize ───
+function resizeGalaxy() {
+  C = document.getElementById('galaxyCanvas');
+  if (!C) return;
+  W = window.innerWidth; H = window.innerHeight;
+  C.width = W * devicePixelRatio; C.height = H * devicePixelRatio;
+  C.style.cssText = `display:block;width:${W}px;height:${H}px`;
+  ctx = C.getContext('2d');
+  ctx.scale(devicePixelRatio, devicePixelRatio);
+}
+
+// ─── 2D helpers ───
+function rgba(c, a) { return c.length === 7 ? c + Math.round(a*255).toString(16).padStart(2,'0') : c.replace(')', `,${a})`).replace('rgb','rgba'); }
+function radialGrad(ctx, x, y, r, c1, a1, c2, a2) {
+  const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+  g.addColorStop(0, rgba(c1, a1)); g.addColorStop(1, rgba(c2, a2));
+  return g;
+}
+
+// ─── Main draw ───
+function drawGalaxy(time) {
+  if (!ctx || !galaxyActive) return;
+  const t = time * 0.0003;
+  const maxDim = Math.min(W, H);
+  const cx = W / 2, cy = H / 2;
+  const isIdle = time - lastMove > 5000;
+
+  // Smooth zoom
+  zoom += (targetZoom - zoom) * 0.06;
+  const sc = zoom;
+  const baseR = maxDim * 0.42 * sc;
+
+  // Parallax offset per layer
+  function pxOff(layer) { return (mx * layer * W * 0.15) * sc; }
+  function pyOff(layer) { return (my * layer * H * 0.15) * sc; }
+
+  // Idle rotation
+  const idleRot = isIdle ? Math.sin(time * 0.00008) * 0.015 : 0;
+  const idleGlow = isIdle ? 0.5 + 0.5 * Math.sin(time * 0.001) : 0;
+
+  const cxPx = cx + pxOff(LAYER.CORE);
+  const cxOr = cx + pxOff(LAYER.ORBIT);
+  const cxNd = cx + pxOff(LAYER.NODE);
+  const cxCl = cx + pxOff(LAYER.CLUSTER);
+  const cyPx = cy + pyOff(LAYER.CORE);
+  const cyOr = cy + pyOff(LAYER.ORBIT);
+  const cyNd = cy + pyOff(LAYER.NODE);
+  const cyCl = cy + pyOff(LAYER.CLUSTER);
+
+  // ─── Clear ───
+  ctx.fillStyle = '#07070e';
+  ctx.fillRect(0, 0, W, H);
+
+  // ─── Nebula gas clouds ───
+  nebula.forEach(nb => {
+    const x = (nb.x + Math.sin(time * nb.dx * 10 + nb.phase) * 0.02 + pxOff(LAYER.NEBULA) / W) * W;
+    const y = (nb.y + Math.cos(time * nb.dy * 10 + nb.phase * 1.3) * 0.02 + pyOff(LAYER.NEBULA) / H) * H;
+    const pulse = 0.7 + 0.3 * Math.sin(time * 0.0005 + nb.phase);
+    ctx.fillStyle = radialGrad(ctx, x, y, nb.r * sc, nb.color[0], nb.alpha * pulse, nb.color[0], 0);
+    ctx.beginPath(); ctx.arc(x, y, nb.r * sc, 0, PI2); ctx.fill();
+  });
+
+  // ─── Deep space glow ───
+  ctx.fillStyle = radialGrad(ctx, cx, cy, maxDim * 0.7 * sc, '#140a32', 0.5 + idleGlow * 0.15, '#050308', 0);
+  ctx.fillRect(0, 0, W, H);
+
+  // ─── Stars with parallax ───
+  stars.forEach(s => {
+    const alpha = s.a * (0.5 + 0.5 * Math.sin(time * s.speed + s.phase));
+    const sx = (s.x + pxOff(LAYER.STAR * s.depth) / W) * W;
+    const sy = (s.y + pyOff(LAYER.STAR * s.depth) / H) * H;
+    ctx.beginPath(); ctx.arc(sx, sy, s.r, 0, PI2);
+    ctx.fillStyle = `rgba(255,255,255,${alpha})`;
+    ctx.fill();
+  });
+
+  // ─── Pre-compute node positions for hover ───
+  const allNodePts = [];
+  let closestDist = 60, closestNode = -1, closestOrb = -1;
+
+  // ─── Orbits ───
+  hoverNode = -1; hoverOrbit = -1;
+
+  orbits.forEach((o, oi) => {
+    const angle = t * o.speed + o.angleOffset + idleRot;
+    const r = o.radius * baseR;
+
+    // Soft glow orbit line
+    ctx.beginPath();
+    ctx.ellipse(cxOr, cyOr, r, r * o.tilt, angle, 0, PI2);
+    ctx.strokeStyle = rgba(o.color, 0.08 + idleGlow * 0.1);
+    ctx.lineWidth = 1.2 + idleGlow * 1.5;
+    ctx.shadowColor = rgba(o.color, 0.04);
+    ctx.shadowBlur = 6 + idleGlow * 8;
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    // Inner glow ring
+    ctx.beginPath();
+    ctx.ellipse(cxOr, cyOr, r * 0.97, r * o.tilt * 0.97, angle, 0, PI2);
+    ctx.strokeStyle = rgba(o.color, 0.03);
+    ctx.lineWidth = 4;
+    ctx.stroke();
+
+    // Nodes
+    o.nodes.forEach((node, ni) => {
+      const theta = node.theta + t * o.speed * 0.5 + angle;
+      const rOff = node.radiusOffset * maxDim * 0.02 * sc;
+      const px = cxNd + Math.cos(theta) * (r + rOff);
+      const py = cyNd + Math.sin(theta) * (r * o.tilt + rOff * o.tilt);
+      const pulse = 0.6 + 0.4 * Math.sin(time * node.pulseSpeed + node.pulsePhase);
+      const size = node.size * pulse;
+
+      // Track for hover
+      allNodePts.push({ x: px, y: py, oi, ni, node, orbit: o, size, pulse });
+      const dx = px - mx * (W/2); const dy = py - my * (H/2);
+      const dist = Math.sqrt(dx*dx + dy*dy);
+      if (dist < closestDist) { closestDist = dist; closestNode = ni; closestOrb = oi; }
+
+      // Glow trail
+      node.trail.push({ x: px, y: py });
+      if (node.trail.length > TRAIL_LEN) node.trail.shift();
+      if (node.trail.length > 1) {
+        for (let k = 1; k < node.trail.length; k++) {
+          const frac = k / node.trail.length;
+          const ta = frac * 0.25 * pulse;
+          ctx.beginPath();
+          ctx.moveTo(node.trail[k-1].x, node.trail[k-1].y);
+          ctx.lineTo(node.trail[k].x, node.trail[k].y);
+          ctx.strokeStyle = rgba(o.color, ta);
+          ctx.lineWidth = size * 0.4 * frac;
+          ctx.stroke();
+        }
+      }
+
+      // Outer glow
+      ctx.fillStyle = radialGrad(ctx, px, py, size * 5, o.color, 0.25 * pulse + idleGlow * 0.15, o.color, 0);
+      ctx.beginPath(); ctx.arc(px, py, size * 5, 0, PI2); ctx.fill();
+
+      // Core dot
+      ctx.beginPath(); ctx.arc(px, py, size * 0.65, 0, PI2);
+      ctx.fillStyle = `rgba(255,255,255,${0.55 * pulse + idleGlow * 0.2})`;
+      ctx.fill();
+
+      // Secondary inner glow
+      ctx.beginPath(); ctx.arc(px, py, size * 2, 0, PI2);
+      ctx.fillStyle = radialGrad(ctx, px, py, size * 2, o.color, 0.12 * pulse, o.color, 0);
+      ctx.fill();
+    });
+  });
+
+  // Hover detection (use physical mouse coords)
+  const mpx = (mx + 1) / 2 * W, mpy = (my + 1) / 2 * H;
+  let hoverDist = 50;
+  allNodePts.forEach(pt => {
+    const d = Math.hypot(pt.x - mpx, pt.y - mpy);
+    if (d < hoverDist) { hoverDist = d; hoverNode = pt.ni; hoverOrbit = pt.oi; }
+  });
+
+  // ─── Connecting lines ───
+  orbits.forEach(o => {
+    const angle = t * o.speed + o.angleOffset + idleRot;
+    const r = o.radius * baseR;
+    const pts = o.nodes.map((node, ni) => {
+      const theta = node.theta + t * o.speed * 0.5 + angle;
+      const rOff = node.radiusOffset * maxDim * 0.02 * sc;
+      return {
+        x: cxNd + Math.cos(theta) * (r + rOff),
+        y: cyNd + Math.sin(theta) * (r * o.tilt + rOff * o.tilt),
+        pulse: 0.6 + 0.4 * Math.sin(time * node.pulseSpeed + node.pulsePhase),
+        ni,
+      };
+    });
+    for (let i = 0; i < pts.length; i++) {
+      for (let j = i+1; j < pts.length; j++) {
+        const dist = Math.hypot(pts[i].x - pts[j].x, pts[i].y - pts[j].y);
+        if (dist < 50) {
+          const alpha = (1 - dist/50) * 0.12 * (pts[i].pulse + pts[j].pulse) / 2;
+          const isHovered = hoverOrbit === orbits.indexOf(o) && (pts[i].ni === hoverNode || pts[j].ni === hoverNode);
+          ctx.beginPath(); ctx.moveTo(pts[i].x, pts[i].y); ctx.lineTo(pts[j].x, pts[j].y);
+          ctx.strokeStyle = rgba(o.color, isHovered ? alpha * 3 : alpha);
+          ctx.lineWidth = isHovered ? 1.5 : 0.6;
+          ctx.shadowColor = isHovered ? rgba(o.color, 0.3) : 'transparent';
+          ctx.shadowBlur = isHovered ? 8 : 0;
+          ctx.stroke(); ctx.shadowBlur = 0;
+        }
+      }
+    }
+  });
+
+  // ─── Memory clusters ───
+  clusters.forEach(cl => {
+    const age = t * 0.02;
+    const dx = Math.cos(age * cl.driftSpeed + cl.driftAngle) * 0.02;
+    const dy = Math.sin(age * cl.driftSpeed * 0.7 + cl.driftAngle * 1.3) * 0.02;
+    const px = cxCl + (cl.x + dx) * baseR / (maxDim * 0.42);
+    const py = cyCl + (cl.y + dy) * baseR / (maxDim * 0.42) * cl.orbitRef.tilt;
+    const pulse = 0.7 + 0.3 * Math.sin(time * cl.pulseSpeed + cl.pulsePhase);
+    const sz = cl.size * pulse * sc;
+    ctx.fillStyle = radialGrad(ctx, px, py, sz, cl.color, cl.alpha * pulse + idleGlow * 0.05, cl.color, 0);
+    ctx.beginPath(); ctx.arc(px, py, sz, 0, PI2); ctx.fill();
+  });
+
+  // ─── Core ───
+  const cp = 0.8 + 0.2 * Math.sin(time * 0.0015 + idleGlow * 0.5);
+  const cR = maxDim * 0.025 * cp * sc;
+  ctx.fillStyle = radialGrad(ctx, cxPx, cyPx, cR * 5, '#a78bfa', 0.55 * cp + idleGlow * 0.2, '#a78bfa', 0);
+  ctx.beginPath(); ctx.arc(cxPx, cyPx, cR * 5, 0, PI2); ctx.fill();
+  ctx.fillStyle = radialGrad(ctx, cxPx, cyPx, cR * 2, '#6ee7b7', 0.25 * cp, '#6ee7b7', 0);
+  ctx.beginPath(); ctx.arc(cxPx, cyPx, cR * 2, 0, PI2); ctx.fill();
+  ctx.beginPath(); ctx.arc(cxPx, cyPx, cR, 0, PI2);
+  ctx.fillStyle = `rgba(255,255,255,${0.7 * cp})`;
+  ctx.fill();
+
+  // Core label
+  ctx.fillStyle = `rgba(200,180,255,${0.2 * cp})`;
+  ctx.font = `${Math.round(maxDim * 0.012 * sc)}px sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.fillText(`${GALAXY_DATA.total} memories ${GALAXY_DATA.tenants.length} tenants`, cxPx, cyPx + cR * 5 + maxDim * 0.02 * sc);
+
+  // ─── Tenant labels ───
+  orbits.forEach((o, i) => {
+    const angle = t * o.speed + o.angleOffset + idleRot;
+    const r = o.radius * baseR;
+    const la = angle + Math.PI/4 + (i % 2 === 0 ? 0 : Math.PI);
+    const lx = cxOr + Math.cos(la) * r * 1.1;
+    const ly = cyOr + Math.sin(la) * (r * o.tilt) * 1.1;
+    ctx.fillStyle = rgba(o.color, 0.3);
+    ctx.font = `${Math.round(maxDim * 0.009 * sc)}px sans-serif`;
+    ctx.textAlign = 'center';
+    const glow = hoverOrbit === i ? 0.8 : 0.3;
+    ctx.fillStyle = rgba(o.color, glow);
+    ctx.fillText(o.name, lx, ly);
+  });
+
+  // ─── Hover highlight on nearest node ───
+  if (hoverOrbit >= 0 && hoverNode >= 0) {
+    const o = orbits[hoverOrbit];
+    if (o && o.nodes[hoverNode]) {
+      const angle = t * o.speed + o.angleOffset + idleRot;
+      const r = o.radius * baseR;
+      const node = o.nodes[hoverNode];
+      const theta = node.theta + t * o.speed * 0.5 + angle;
+      const rOff = node.radiusOffset * maxDim * 0.02 * sc;
+      const px = cxNd + Math.cos(theta) * (r + rOff);
+      const py = cyNd + Math.sin(theta) * (r * o.tilt + rOff * o.tilt);
+      const pulse = 0.6 + 0.4 * Math.sin(time * node.pulseSpeed + node.pulsePhase);
+
+      // Big highlight ring
+      ctx.beginPath(); ctx.arc(px, py, 16 * sc, 0, PI2);
+      ctx.strokeStyle = rgba(o.color, 0.6 * pulse);
+      ctx.lineWidth = 2;
+      ctx.shadowColor = rgba(o.color, 0.5);
+      ctx.shadowBlur = 20;
+      ctx.stroke(); ctx.shadowBlur = 0;
+
+      // Update hover card
+      const card = document.getElementById('galaxyHoverCard');
+      if (card) {
+        const ten = document.getElementById('ghcTenant');
+        const con = document.getElementById('ghcContent');
+        const met = document.getElementById('ghcMeta');
+        if (ten) ten.textContent = `◈ ${o.name}`;
+        if (con) con.textContent = node.label;
+        if (met) met.innerHTML = `<span>🕐 ${node.ts}</span><span>🏷 ${node.tags.join(', ')}</span>`;
+        card.style.display = 'block';
+        card.style.left = Math.min(px + 20, W - 280) + 'px';
+        card.style.top = Math.min(py - 20, H - 100) + 'px';
+        card.style.opacity = '1';
+      }
+    }
+  } else {
+    const card = document.getElementById('galaxyHoverCard');
+    if (card) card.style.display = 'none';
+  }
+
+  animId = requestAnimationFrame(drawGalaxy);
+}
+
+// ─── Toggle ───
+function toggleGalaxy() {
+  const overlay = document.getElementById('galaxyOverlay');
+  const btn = document.getElementById('galaxyToggleBtn');
+  if (!overlay) return;
+  galaxyActive = !galaxyActive;
+  overlay.style.display = galaxyActive ? 'block' : 'none';
+
+  if (galaxyActive) clearTimeout(_autoRefreshTimer);
+  else _startAutoRefresh();
+
+  if (btn) {
+    btn.textContent = galaxyActive ? '◉ Galaxy Active' : '🌌 Memory Galaxy';
+    btn.style.background = galaxyActive ? 'linear-gradient(135deg,#2d1b69,#4a2d8f)' : 'linear-gradient(135deg,#1a0533,#2d1b69)';
+    btn.style.boxShadow = galaxyActive ? '0 0 24px rgba(100,60,200,0.6)' : '0 0 16px rgba(100,60,200,0.3)';
+  }
+
+  if (galaxyActive) {
+    document.body.style.overflow = 'hidden';
+    resizeGalaxy();
+    initNebula(16);
+    initStars(200);
+    buildOrbits();
+    buildClusters();
+    drawGalaxy(performance.now());
+  } else {
+    document.body.style.overflow = '';
+    if (animId) { cancelAnimationFrame(animId); animId = null; }
+  }
+}
+
+// ─── Mouse ───
+document.addEventListener('mousemove', e => {
+  if (!galaxyActive) return;
+  mx = (e.clientX / W) * 2 - 1;
+  my = (e.clientY / H) * 2 - 1;
+  lastMove = performance.now();
+});
+
+document.addEventListener('wheel', e => {
+  if (!galaxyActive) return;
+  e.preventDefault();
+  targetZoom = Math.max(0.3, Math.min(3, targetZoom - e.deltaY * 0.002));
+}, { passive: false });
+
+window.addEventListener('resize', () => { if (galaxyActive) resizeGalaxy(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && galaxyActive) toggleGalaxy(); });
+</script>
+
 </body>
 </html>

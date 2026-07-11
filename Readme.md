@@ -45,13 +45,35 @@ The **Dashboard** is the main entry point for everything your agent remembers:
 | **Memory Timeline** | Browse all captured memories chronologically |
 | **Semantic Search** | Find memories by meaning, not keywords |
 | **Tenant Isolation** | Each scope/chat gets its own view — no data leaks |
-| **Memory Types** | Filter by `conversation`, `skill`, `project`, `system` |
-| **Quick Capture** | Manually add facts directly from the browser |
+| **Memory Health** | Review stale/low-confidence memories, run optimizer |
+| **Memory Galaxy** | Interactive 3D galaxy visualization of all memories |
 | **Export** | Download memory snapshots anytime |
 
-> 🖼️ Dashboard live — screenshot below.
+> 🖼️ Dashboard — memory timeline, health, and the **Memory Galaxy** button.
+
+![Dashboard — timeline, search, health panel, and tenant isolation](images/dashboard.png "Dashboard: Timeline, Search, Health, Tenant Isolation")
 
 ---
+
+## 🌌 Memory Galaxy — Interactive Memory Universe
+
+A full‑screen **Canvas‑based galaxy visualization** that brings your memories to life:
+
+| Feature | Effect |
+|---------|--------|
+| **Tenant Orbits** | Each scope/user gets its own colored orbital ring |
+| **Glowing Nodes** | Pulsing memory dots with comet‑like glow trails |
+| **Nebula Shader** | Animated gas clouds (blue/violet/pink) with depth |
+| **Parallax Depth** | Foreground nodes react faster than background stars on mouse move |
+| **Hover Cards** | Hover any node to see tenant, timestamp, and tags |
+| **Zoom & Rotate** | Mouse wheel zoom (0.3×–3×), idle auto‑rotation after 5s |
+| **Memory Clusters** | Diffuse glowing blobs drifting near their tenant orbit |
+
+> 🖼️ Memory Galaxy in action — open it anytime from the Dashboard.
+
+![Memory Galaxy — interactive memory universe with orbits, nodes, and nebula](images/galaxy.png "Memory Galaxy: Interactive 3D visualization of all memories")
+
+Toggle it on from the Dashboard header — no install, no extra setup.
 
 ## 🧠 What It Does
 
@@ -138,9 +160,11 @@ COMPOSE_AI_PROVIDER=openrouter docker compose up -d --force-recreate api
 
 ---
 
-## 🖼️ Dashboard Screenshot
+## 🖼️ Screenshots
 
-![Dashboard](images/dashboard.png "Dashboard — memory timeline, search, and tenant isolation")
+![Dashboard — timeline, search, health panel, and tenant isolation](images/dashboard.png "Dashboard")
+
+![Memory Galaxy — interactive 3D memory visualization](images/galaxy.png "Memory Galaxy")
 
 *The dashboard is available immediately at [`http://localhost:8010/dashboard`](http://localhost:8010/dashboard) after `docker compose up`.*
 

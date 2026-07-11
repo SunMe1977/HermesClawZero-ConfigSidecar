@@ -42,6 +42,7 @@ _template_dir = __import__("os").path.join(__import__("os").path.dirname(__file_
 _jinja_env = jinja2.Environment(
     loader=jinja2.FileSystemLoader(_template_dir),
     autoescape=True,
+    cache_size=0,
 )
 
 
@@ -356,8 +357,31 @@ async def dashboard(
     if active_scope not in {o[0] for o in scope_options}:
         scope_options.append((active_scope, f"{format_scope_label(active_scope)} (selected)"))
 
+    # Galaxy view data
+    galaxy_tenants = [
+        {"name": format_scope_label(str(sid)), "count": int(c), "scope": str(sid)}
+        for sid, c in scope_rows[:10]
+    ]
+    galaxy_total = int(total_items)
+    try:
+        with connect_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT COUNT(*) FROM pages WHERE confidence >= 0.7")
+                galaxy_high_conf = int(cur.fetchone()[0] or 0)
+                cur.execute("SELECT COUNT(*) FROM pages WHERE confidence >= 0.4 AND confidence < 0.7")
+                galaxy_med_conf = int(cur.fetchone()[0] or 0)
+                cur.execute("SELECT COUNT(*) FROM pages WHERE confidence < 0.4")
+                galaxy_low_conf = int(cur.fetchone()[0] or 0)
+    except Exception:
+        galaxy_high_conf = galaxy_med_conf = galaxy_low_conf = 0
+
     return _jinja_env.get_template("dashboard.html").render(
         total_items=total_items,
+        galaxy_tenants=galaxy_tenants,
+        galaxy_high_conf=galaxy_high_conf,
+        galaxy_med_conf=galaxy_med_conf,
+        galaxy_low_conf=galaxy_low_conf,
+        galaxy_total=galaxy_total,
         watchdog_pending_text=watchdog_pending_text,
         watchdog_updated_text=watchdog_updated_text,
         watchdog_pending_value=watchdog_pending_value,
