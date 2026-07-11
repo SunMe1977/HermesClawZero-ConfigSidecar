@@ -225,6 +225,17 @@ AI developers · Hermes users · OpenClaw users · Self-hosters · MCP enthusias
 
 ---
 
+---
+
+## 🙌 Contributions Welcome
+
+Contributions of all kinds are welcome —  
+feel free to open [PRs](https://github.com/SunMe1977/HermesClawZero-ConfigSidecar/pulls) or [issues](https://github.com/SunMe1977/HermesClawZero-ConfigSidecar/issues).
+
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) for code style, commit conventions, and PR workflow.
+
+---
+
 Built for AI Agent autonomy.
 
 ---
