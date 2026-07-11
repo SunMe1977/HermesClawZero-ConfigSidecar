@@ -1,6 +1,21 @@
 ---
 name: "hermesclawzero-auto-memory"
 description: "Auto-capture chat to Hermes DB, load context on fresh chats, scheduled DB maintenance."
+version: "1.1.0"
+tags:
+  - memory
+  - hermes
+  - persistence
+  - vector-search
+categories:
+  - agents
+  - knowledge
+topics:
+  - Memory
+  - Vector Search
+  - Chat Persistence
+  - pgvector
+  - Embeddings
 ---
 
 # HermesClawZero Auto Memory
