@@ -1,42 +1,36 @@
 ---
 name: hermesclawzero-auto-memory
-description: Automatically saves chat input to Hermes DB, loads context on fresh chat, and triggers DB maintenance.
+description: Auto-capture chat to Hermes DB, load context on fresh chats, scheduled DB maintenance.
 ---
 
 # HermesClawZero Auto Memory
 
-This skill integrates OpenClaw seamlessly with the HermesClawZero database to provide persistent, long-term memory across sessions, and manages automated database maintenance.
+Automatically saves meaningful chat input to HermesClawZero DB, loads user context on fresh sessions, and manages automated DB maintenance.
+
+## Script Path
+`C:\dev\HermesClawZero-ConfigSidecar\memory.py` — reads API config from `.env` or env vars automatically.
 
 ## 1. Auto-Load on Fresh Chat
-Whenever a new session starts (e.g., first message of a thread), automatically load the user's profile and recent context to ensure continuity:
-- Execute: `python scripts/memory.py search "user profile preferences current project state" 5`
-- Silently absorb the retrieved context and use it to inform your response. Do not output the raw JSON to the user unless they ask.
+When a new session starts, load user context:
+- Execute: `python C:\dev\HermesClawZero-ConfigSidecar\memory.py search "user profile preferences current project state" 5`
+- Silently absorb context. Do not output raw JSON unless asked.
 
-## 2. Auto-Save (Continuous Memory)
-To ensure all meaningful chat input is saved to the DB automatically:
-- During the conversation, if the user shares a new fact, instruction, preference, or project detail, immediately capture it.
-- Execute: `python scripts/memory.py capture "<Concise summary of the user's input or new fact>"`
+## 2. Auto-Capture
+During conversation, if the user shares a new fact, instruction, preference, or project detail, immediately capture it:
+- Execute: `python C:\dev\HermesClawZero-ConfigSidecar\memory.py capture "<concise summary>" [scope_id]`
+- Do **not** pass a `chat_id` — that makes memories unfindable via default search. Omitting it stores in `chat_id=global`.
 
-## 3. Full Chat History Sync (Cron Backup)
-If requested by the user, dump the current session history:
-1. Use the `sessions_history` tool to get the current visible session.
-2. Format the messages into a text summary.
-3. Execute: `python scripts/memory.py autosave "<formatted_chat_history>" "chat_backup.md"`
-HermesClawZero's watchdog will ingest it.
+## 3. Full Chat History Sync (On Request)
+If the user asks to back up the session:
+1. Use `sessions_history` to get the current session.
+2. Format into text summary.
+3. Execute: `python C:\dev\HermesClawZero-ConfigSidecar\memory.py autosave "<formatted_chat_history>" "chat_backup.md"`
 
-## 4. Automated Database Maintenance (Gardener & Reminders)
-HermesClawZero requires periodic background maintenance to tag memory automatically and trigger push reminders to the user.
+## 4. Automated Database Maintenance
+Cron jobs for background memory maintenance.
 
-When you install or activate this skill, or when explicitly asked to "setup memory background jobs", you must create OpenClaw `cron` jobs to run these scripts automatically. Use the `cron` tool to schedule them:
+**A. Nightly Memory Gardener (3:00 AM):**
+- `exec python C:\dev\HermesClawZero-ConfigSidecar\gardener.py`
 
-**A. Nightly Memory Gardener (Auto-tagging):**
-- Setup a cron job using the `cron` tool.
-- Name: "hermes-memory-gardener"
-- Expression: `0 3 * * *` (Runs every night at 3:00 AM)
-- Payload: `agentTurn` that runs: `exec python C:\dev\HermesClawZero-ConfigSidecar\gardener.py`
-
-**B. Daily Memory Highlight (Telegram Push):**
-- Setup a cron job using the `cron` tool.
-- Name: "hermes-daily-reminder"
-- Expression: `0 9 * * *` (Runs every morning at 9:00 AM)
-- Payload: `agentTurn` that runs: `exec python C:\dev\HermesClawZero-ConfigSidecar\daily_reminder.py`
+**B. Daily Memory Highlight (9:00 AM):**
+- `exec python C:\dev\HermesClawZero-ConfigSidecar\daily_reminder.py`

@@ -2,18 +2,34 @@
 name: hermesclawzero-memory
 description: Manages long-term semantic memory using HermesClawZero.
 ---
+
 # HermesClawZero Memory Manager
 
-This skill manages long-term semantic memory using the HermesClawZero API. It enables persistent, searchable storage for information, task history, and knowledge base items.
+Persistent, searchable memory via HermesClawZero Sidecar API.
 
-## API Configuration
-- Base URL: from MEM_PUBLIC_URL (example: http://localhost:8010)
-- API Key: from API_KEY
+## Script
+`python C:\dev\HermesClawZero-ConfigSidecar\memory.py` — reads API config from `.env` or env vars automatically.
 
-## Tools
-1. **capture(text: str)**: Saves text to memory.
-2. **search(query: str, limit: int = 5)**: Retrieves relevant memories.
-3. **autosave(content: str, filename: str)**: Writes content to a file in the sync folder for automatic indexing.
+## Commands
 
-## Usage
-Whenever you have important information, use the `capture` tool. Hermes automatically uses `autosave` to ensure your session history is persisted.
+### capture
+Saves a fact/memory to global chat (always findable via default search):
+`python C:\dev\HermesClawZero-ConfigSidecar\memory.py capture "<text>" [scope_id]`
+
+Do **not** pass a `chat_id` — memories go to `chat_id=global` and are always searchable.
+
+### search
+Retrieves relevant memories from global chat:
+`python C:\dev\HermesClawZero-ConfigSidecar\memory.py search "<query>" [limit=5]`
+
+### autosave
+Writes longer content as a single capture entry:
+`python C:\dev\HermesClawZero-ConfigSidecar\memory.py autosave "<text>" [filename]`
+
+## Auto-Load on Fresh Chat
+When a new session starts, silently load context:
+`python C:\dev\HermesClawZero-ConfigSidecar\memory.py search "user profile preferences current project state" 5`
+
+## Auto-Capture
+During conversation, immediately capture new facts, instructions, preferences:
+`python C:\dev\HermesClawZero-ConfigSidecar\memory.py capture "<summary>" [scope_id]`

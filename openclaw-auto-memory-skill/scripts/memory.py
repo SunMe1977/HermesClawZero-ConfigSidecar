@@ -1,55 +1,111 @@
+#!/usr/bin/env python3
+"""HermesClawZero Memory CLI — capture, search & autosave via Sidecar API.
+
+Usage:
+    python memory.py capture "<text>" [scope_id]
+    python memory.py search "<query>" [limit=5]
+    python memory.py autosave "<text>" [filename]
+"""
+import json, os, sys
 import requests
-import sys
-import os
-from pathlib import Path
 
-# Update these to match your HermesClawZero setup
-BASE_URL = os.getenv("MEM_PUBLIC_URL") or os.getenv("OPENCLAW_URL") or "http://localhost:8010"
-API_KEY = os.getenv("API_KEY") or os.getenv("OPENCLAW_KEY")
-SYNC_DIR = os.getenv("MEM_SYNC_DIR") or os.getenv("OPENCLAW_SYNC_DIR") or str(Path.cwd() / "sync")
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
-if not API_KEY:
-    raise RuntimeError("API_KEY is required. Set API_KEY (or OPENCLAW_KEY for compatibility).")
+def _load_dotenv(path: str) -> dict:
+    env = {}
+    if not os.path.isfile(path):
+        return env
+    for line in open(path, encoding="utf-8"):
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, val = line.partition("=")
+        env[key.strip()] = val.strip().strip("\"'")
+    return env
 
-def capture(text):
-    url = f"{BASE_URL}/capture"
-    params = {"key": API_KEY}
-    data = {"text": text}
-    try:
-        response = requests.post(url, params=params, json=data)
-        print(response.json())
-    except Exception as e:
-        print(f"Error: {e}")
+_env_vars = {**os.environ}
+_env_file = _load_dotenv(os.path.join(SCRIPT_DIR, ".env"))
+_env_cwd = _load_dotenv(os.path.join(os.getcwd(), ".env"))
 
-def search(query, limit=5):
-    url = f"{BASE_URL}/search"
-    params = {"query": query, "limit": limit, "key": API_KEY}
-    try:
-        response = requests.get(url, params=params)
-        print(response.json())
-    except Exception as e:
-        print(f"Error: {e}")
+API_BASE = (
+    _env_vars.get("MEM_PUBLIC_URL")
+    or _env_file.get("MEM_PUBLIC_URL", "http://localhost:8010")
+)
+API_KEY = (
+    _env_vars.get("API_KEY")
+    or _env_file.get("API_KEY", "")
+    or _env_cwd.get("API_KEY", "")
+)
 
-def autosave(content, filename):
-    if not filename.endswith(('.txt', '.md', '.json')):
-        filename += ".txt"
-    filepath = os.path.join(SYNC_DIR, filename)
-    try:
-        with open(filepath, "w", encoding="utf-8") as f:
-            f.write(content)
-        print(f"Autosaved to {filepath}")
-    except Exception as e:
-        print(f"Error writing file: {e}")
+
+def _api_call(method: str, path: str, **kwargs):
+    url = f"{API_BASE}{path}"
+    params = kwargs.pop("params", {})
+    params.setdefault("key", API_KEY)
+    kwargs["params"] = params
+    r = requests.request(method, url, **kwargs)
+    r.raise_for_status()
+    return r.json()
+
+
+def capture(text: str, scope_id: str | None = None):
+    """Capture to global chat (always findable via default search)."""
+    body = {"text": text}
+    if scope_id:
+        body["scope_id"] = scope_id
+    return _api_call("POST", "/capture", json=body)
+
+
+def search(query: str, limit: int = 5, rerank: bool = False):
+    return _api_call(
+        "GET", "/search",
+        params={"query": query, "limit": limit, "rerank_results": str(rerank).lower()},
+    )
+
+
+def autosave(text: str, filename: str | None = None):
+    body = {"text": text}
+    if filename:
+        body["scope_id"] = f"autosave:{filename}"
+    return _api_call("POST", "/capture", json=body)
+
+
+def main():
+    if len(sys.argv) < 2:
+        print(__doc__, file=sys.stderr)
+        sys.exit(1)
+
+    cmd = sys.argv[1]
+
+    if cmd == "capture":
+        if len(sys.argv) < 3:
+            print('Usage: memory.py capture "<text>" [scope_id]', file=sys.stderr)
+            sys.exit(1)
+        r = capture(sys.argv[2], sys.argv[3] if len(sys.argv) > 3 else None)
+        print(json.dumps(r, ensure_ascii=False))
+
+    elif cmd == "search":
+        query = sys.argv[2] if len(sys.argv) > 2 else ""
+        limit = int(sys.argv[3]) if len(sys.argv) > 3 else 5
+        r = search(query, limit)
+        if isinstance(r, list):
+            for item in r:
+                content = item.get("content") or item.get("page_content") or json.dumps(item, ensure_ascii=False)
+                print(content)
+        else:
+            print(json.dumps(r, ensure_ascii=False))
+
+    elif cmd == "autosave":
+        if len(sys.argv) < 3:
+            print('Usage: memory.py autosave "<text>" [filename]', file=sys.stderr)
+            sys.exit(1)
+        r = autosave(sys.argv[2], sys.argv[3] if len(sys.argv) > 3 else None)
+        print(json.dumps(r, ensure_ascii=False))
+
+    else:
+        print(f"Unknown command: {cmd}", file=sys.stderr)
+        sys.exit(1)
+
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("Usage: memory.py [capture|search|autosave] [args...]")
-        sys.exit(1)
-        
-    cmd = sys.argv[1]
-    if cmd == "capture":
-        capture(sys.argv[2])
-    elif cmd == "search":
-        search(sys.argv[2], int(sys.argv[3]) if len(sys.argv) > 3 else 5)
-    elif cmd == "autosave":
-        autosave(sys.argv[2], sys.argv[3])
+    main()
