@@ -227,6 +227,42 @@ AI developers · Hermes users · OpenClaw users · Self-hosters · MCP enthusias
 
 ---
 
+## 🏆 Compared to the Ecosystem
+
+HermesClawZero is **the only memory system** that combines all of these in a single Docker stack:
+
+| Need | gBrain | ZeroMem | Hermes Built‑In | OpenClaw Memory | Cognee | **HermesClawZero** |
+|---|---|---|---|---|---|---|
+| **Knowledge Graph** | ⚠️ Self-wiring | ❌ | ❌ | ❌ | ✅ | ✅ **Entities + Rels + Traversal** |
+| **Memory Tiers** | ❌ | ❌ | ⚠️ 3-layer | ❌ | ❌ | ✅ **Hot/Warm/Standard/Cold** |
+| **Versioning** | ❌ | ✅ DAG | ❌ | ❌ | ❌ | ✅ **memory_versions table** |
+| **Compression** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ **Intelligent multi-line** |
+| **Consolidation** | ✅ Dream cycle | ❌ | ❌ | ✅ Dreaming | ❌ | ✅ **Embedding-clustering** |
+| **Deduplication** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ **Vector-distance** |
+| **Editor / Merge** | ❌ | ✅ DAG | ❌ | ❌ | ❌ | ✅ **Inline + batch merge** |
+| **Feedback** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ **Upvote/downvote** |
+| **Temporal Search** | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ **days_back filter** |
+| **Memory Nudge** | ❌ | ❌ | ✅ Periodic | ❌ | ❌ | ✅ **/nudge endpoint** |
+| **Auto-Import** | ❌ | ❌ | n/a | ❌ | ❌ | ✅ **Hermes state.db** |
+| **Auto-Sync** | ❌ | ❌ | n/a | ❌ | ❌ | ✅ **5min daemon** |
+| **Dashboard (UI)** | ❌ | ❌ | ✅ Desktop | ❌ | ❌ | ✅ **Memory Galaxy + Health** |
+| **Graph UI** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ **Entity browser in dash** |
+| **MCP Tools** | 30+ | ❌ | Built-in | ❌ | ❌ | **6 tools** |
+| **API Keys** | Needs OpenAI | ❌ | **None** | ❌ | Needs LLM key | **✅ None (Ollama)** |
+| **Install** | `npx gbrain` | Complex | Built-in | Plugin | `pip install` | **🤖 One‑click via agent** |
+
+### Why switch?
+
+> **You get all of this in a single `docker compose up`:**
+> — PostgreSQL + pgvector + HNSW indexes — not SQLite, not files
+> — Knowledge graph with entity extraction + graph traversal — not just vector search
+> — Memory tiers + versioning + compression — no other system has all three
+> — A full animated Dashboard with galaxy view, health panel, and interactive tools
+> — Zero API keys, zero cloud, zero data leaving your machine
+> — One‑click install: paste the GitHub URL into any Hermes or OpenClaw agent
+
+---
+
 ## 🙌 Contributions Welcome
 
 Contributions of all kinds are welcome —  
