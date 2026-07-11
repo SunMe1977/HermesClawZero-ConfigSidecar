@@ -45,7 +45,8 @@ After ~30s open → [`http://localhost:8010/dashboard`](http://localhost:8010/da
 | 2 | Docker Compose starts PostgreSQL + Ollama + API |
 | 3 | Dashboard live on `:8010` |
 | 4 | Memory skill activated in Hermes |
-| 5 | Auto-capture begins on next conversation |
+| 5 | **Auto-import:** All existing Hermes sessions + messages are migrated into the Sidecar DB on first API startup — no manual migration needed |
+| 6 | Auto-capture begins on next conversation |
 
 ### Manual start (if you don't have an agent):
 ```bash

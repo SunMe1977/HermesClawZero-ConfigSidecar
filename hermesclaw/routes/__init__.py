@@ -28,6 +28,7 @@ from hermesclaw.optimizer import (
     run_decay_and_archive_once, get_optimizer_review, get_optimizer_dry_run,
     archive_selected_pages, get_latest_manual_archive_batch_id, restore_archive_batch,
 )
+from hermesclaw.importer import import_hermes_sessions
 from hermesclaw.update import get_update_status, run_update, get_version_info
 
 logger = logging.getLogger("hermesclaw.routes")
@@ -603,6 +604,20 @@ async def optimizer_undo_latest_manual_archive_from_dashboard(
         query, selected_scope, page,
         health_stale_days, health_confidence_threshold, health_limit,
     )
+
+
+@router.get("/import", dependencies=[Depends(get_current_username)])
+async def run_import(dry_run: bool = False):
+    """Import Hermes sessions into Sidecar memory. Pass ?dry_run=true to preview."""
+    result = await run_in_threadpool(lambda: import_hermes_sessions(dry_run=dry_run))
+    return {"status": "ok", "import": result}
+
+
+@router.post("/import", dependencies=[Depends(get_current_username)])
+async def run_import_post():
+    """Trigger a full import of Hermes sessions."""
+    result = await run_in_threadpool(import_hermes_sessions)
+    return {"status": "ok", "import": result}
 
 
 @router.post("/update/run_from_dashboard", dependencies=[Depends(get_current_username)])

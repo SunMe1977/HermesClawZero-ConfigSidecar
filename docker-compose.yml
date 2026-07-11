@@ -32,6 +32,8 @@ services:
       - .env
     ports:
       - "8010:8010"
+    volumes:
+      - ${HERMES_DB_PATH_DIR:-C:\Users\hansj\AppData\Local\hermes}:/hermes_state:ro
     environment:
       DB_HOST: db
       DB_PORT: 5432
@@ -47,6 +49,7 @@ services:
       DASHBOARD_SESSION_SECRET: ${DASHBOARD_SESSION_SECRET:-DagD2b1Jg+ZSzVoaaL5/MdzcNJvro4jnUpIXi9Fm2S4=}
       AI_PROVIDER: ${COMPOSE_AI_PROVIDER:-${AI_PROVIDER:-openrouter}}
       EMBEDDING_PROVIDER: auto
+      HERMES_DB_PATH: /hermes_state/state.db
       SYNC_DIR: ${SYNC_DIR}
       OLLAMA_HOST: ${OLLAMA_HOST}
     healthcheck:

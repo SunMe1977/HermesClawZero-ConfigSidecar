@@ -17,6 +17,7 @@ from hermesclaw.auth import (
 from hermesclaw.db import ensure_phase1_schema, cleanup_orphaned_embeddings, close_db_pool
 from hermesclaw.optimizer import run_decay_and_archive_once
 from hermesclaw.update import get_update_status, run_update
+from hermesclaw.importer import import_hermes_sessions
 from hermesclaw.routes import router
 
 app = FastAPI()
@@ -31,6 +32,7 @@ async def url_api_key_middleware(request: Request, call_next):
     exempt_prefixes = (
         "/docs/", "/dashboard", "/delete", "/export",
         "/tag_auto/", "/page_html", "/optimizer/", "/update/",
+        "/import",
     )
 
     if path in exempt_exact_paths or any(path.startswith(p) for p in exempt_prefixes):
@@ -120,6 +122,22 @@ def startup_event():
         orphaned_deleted = cleanup_orphaned_embeddings()
         logger.info("[SCHEMA] cleanup_orphaned_embeddings deleted=%s", orphaned_deleted)
         run_decay_and_archive_once()
+
+        # First-run import: auto-import Hermes sessions into Sidecar memory
+        try:
+            result = import_hermes_sessions()
+            if result.get("status") == "ok":
+                logger.info(
+                    "[IMPORT] Hermes sessions: %d found, %d imported, %d messages — %d errors",
+                    result.get("sessions_found", 0),
+                    result.get("sessions_imported", 0),
+                    result.get("messages_imported", 0),
+                    len(result.get("errors", [])),
+                )
+            else:
+                logger.info("[IMPORT] Skipped: %s", result.get("reason", "unknown"))
+        except Exception as ex:
+            logger.warning("[IMPORT] Non-fatal error: %s", ex)
     except Exception as ex:
         raise RuntimeError(f"Startup failed during database initialization: {ex}") from ex
 
