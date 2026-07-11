@@ -44,6 +44,7 @@ services:
       # 1) COMPOSE_AI_PROVIDER (explicit compose runtime override)
       # 2) AI_PROVIDER from .env (backward compatible, incl. Windows/Ollama setups)
       # 3) openrouter (safe default)
+      DASHBOARD_SESSION_SECRET: ${DASHBOARD_SESSION_SECRET:-DagD2b1Jg+ZSzVoaaL5/MdzcNJvro4jnUpIXi9Fm2S4=}
       AI_PROVIDER: ${COMPOSE_AI_PROVIDER:-${AI_PROVIDER:-openrouter}}
       EMBEDDING_PROVIDER: auto
       SYNC_DIR: ${SYNC_DIR}
