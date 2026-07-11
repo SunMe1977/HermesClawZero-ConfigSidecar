@@ -71,7 +71,9 @@ A full‑screen **Canvas‑based galaxy visualization** that brings your memorie
 
 > 🖼️ Memory Galaxy in action — open it anytime from the Dashboard.
 
-![Memory Galaxy — interactive memory universe with orbits, nodes, and nebula](images/galaxy.png "Memory Galaxy: Interactive 3D visualization of all memories")
+![Memory Galaxy — interactive 3D memory visualization](images/galaxy.png "Memory Galaxy: Interactive 3D visualization of all memories")
+
+![Memory Galaxy in action — idle rotation and hover interaction](images/galaxy-hover.gif "Memory Galaxy: 5-second animated demo showing idle rotation and hover cards")
 
 Toggle it on from the Dashboard header — no install, no extra setup.
 
