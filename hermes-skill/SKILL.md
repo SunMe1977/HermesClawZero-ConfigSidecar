@@ -1,80 +1,63 @@
 ---
-name: hermesclawzero-memory
-description: Long-term semantic memory via HermesClawZero Sidecar — auto-captures facts, preferences, and decisions during conversation.
+name: "hermesclawzero-auto-memory"
+description: "Auto-capture chat to Hermes DB, load context on fresh chats, scheduled DB maintenance."
 ---
 
-# HermesClawZero Memory Manager
+# HermesClawZero Auto Memory
 
-Persistent, searchable long-term memory via HermesClawZero Sidecar API (PostgreSQL + pgvector + Ollama embeddings).
+Automatically saves meaningful chat input to HermesClawZero DB, loads user context on fresh sessions, and manages automated DB maintenance.
 
-## 🧠 Auto-Capture (Do This During Every Conversation)
+## ⚠️ Privacy & Consent
 
-**Whenever the user provides important information, immediately capture it:**
-```
-python C:\dev\HermesClawZero-ConfigSidecar\memory.py capture "<summary of fact / preference / decision>"
-```
+This skill **captures and persistently stores conversation content** in a local PostgreSQL+pgvector database. By activating this skill you consent to automatic memory capture.
 
-### What to auto-capture:
-| Trigger | Example |
-|---------|---------|
-| User states a preference | `capture "User prefers concise responses in German"` |
-| User gives an instruction | `capture "User wants auto-capture enabled for all chats"` |
-| Project decision made | `capture "Switched web search backend from Firecrawl to DuckDuckGo (ddgs)"` |
-| Environment info learned | `capture "HermesClawZero running on Windows, Docker stack on ports 8010/5666/11435"` |
-| Key file path established | `capture "Repo path: C:\\dev\\HermesClawZero-ConfigSidecar"` |
-| User confirms something works/doesn't | `capture "User confirmed Docker stack healthy, capture+search functional"` |
+- **Data stays local** — all processing runs via the Sidecar API on your machine; no third-party data sharing
+- **Background jobs** (cron) are only created when you explicitly ask to set them up
+- **Captures only meaningful facts** — the agent summaries and saves key information, not raw chat logs
 
-**Do NOT capture:**
-- Secrets, passwords, API keys (the .env is never shared)
-- Every single trivial message
-- Content that's already in the current session context
+## Script Path
 
-## 📋 Commands
+The `memory.py` CLI lives alongside the sidecar at:
+`C:\dev\HermesClawZero-ConfigSidecar\memory.py`
 
-### capture
-Save a fact/memory to global chat (always findable via default search):
-```
-python C:\dev\HermesClawZero-ConfigSidecar\memory.py capture "<text>" [scope_id]
-```
-Do **not** pass a `chat_id` — memories go to `chat_id=global` and are always searchable.
+It reads API config from `.env` or env vars (`MEM_PUBLIC_URL`, `API_KEY`) automatically.
 
-### search
-Retrieve relevant memories:
-```
-python C:\dev\HermesClawZero-ConfigSidecar\memory.py search "<query>" [limit=5]
-```
+## 1. Auto-Load on Fresh Chat
 
-### autosave
-Write longer content as a single capture entry:
-```
-python C:\dev\HermesClawZero-ConfigSidecar\memory.py autosave "<text>" [filename]
-```
+When a new session starts, load the user's profile and recent context:
+- Execute: `python C:\dev\HermesClawZero-ConfigSidecar\memory.py search "user profile preferences current project state" 5`
+- Silently absorb the context. Do not output raw JSON to the user unless they ask.
 
-## 🚀 Auto-Load on Fresh Chat
+## 2. Auto-Save (Continuous Capture)
 
-When a new session starts (and no prior context exists), load recent context:
-```
-python C:\dev\HermesClawZero-ConfigSidecar\memory.py search "user profile preferences current project state" 5
-```
+During conversation, if the user shares a new fact, instruction, preference, project detail, or anything worth remembering, immediately capture it:
+- Execute: `python C:\dev\HermesClawZero-ConfigSidecar\memory.py capture "<Concise summary of the user's input or new fact>"`
+- Optionally pass a `scope_id` (e.g. project name) for logical grouping.
+- Do **not** pass a `chat_id` — that makes memories unfindable via default search. Omitting it stores in `chat_id=global`.
 
-## 📁 Files & Architecture
+## 3. Full Chat History Sync (On Request)
 
-| File | Purpose |
-|------|---------|
-| `memory.py` | CLI tool: capture / search / autosave (reads .env from repo root) |
-| `memory_sync.py` | Watchdog daemon — watches `sync/` and `inbox/` folders, auto-imports files to API |
-| `main.py` | FastAPI server (port 8010) |
-| `docker-compose.yml` | Orchestrates API + PostgreSQL/pgvector + Ollama |
-| `.env` | Config: API_KEY, AI_PROVIDER=ollama, DB_PASSWORD, OLLAMA_HOST |
+If the user asks to back up the current session:
+1. Use `sessions_history` to get the current visible session.
+2. Format messages into a text summary.
+3. Execute: `python C:\dev\HermesClawZero-ConfigSidecar\memory.py autosave "<formatted_chat_history>" "chat_backup.md"`
 
-## 🐳 Docker Stack
+## 4. Automated Database Maintenance (Cron Jobs)
 
-After `docker compose --profile ollama up -d --build`:
-| Container | Port | Role |
-|-----------|------|------|
-| `hermesclawzero-configsidecar-api-1` | `:8010` | FastAPI + capture/search endpoints |
-| `gbrain-postgres` | `:5666` | PostgreSQL 16 + pgvector extension |
-| `gbrain-ollama` | `:11435` | Ollama with nomic-embed-text for embeddings |
+HermesClawZero requires periodic background jobs for tagging memories and push reminders.
 
-Health check: `curl http://localhost:8010/healthz`
-Dashboard: `http://localhost:8010/dashboard` (Basic Auth)
+When the user asks to "setup memory background jobs", create these cron jobs:
+
+**A. Nightly Memory Gardener (Auto-tagging):**
+- Name: `hermes-memory-gardener`
+- Expression: `0 3 * * *` (3:00 AM daily)
+- Session target: isolated
+- AgentTurn message: `exec python C:\dev\HermesClawZero-ConfigSidecar\gardener.py`
+
+**B. Daily Memory Highlight (Telegram Push):**
+- Name: `hermes-daily-reminder`
+- Expression: `0 9 * * *` (9:00 AM daily)
+- Session target: isolated
+- AgentTurn message: `exec python C:\dev\HermesClawZero-ConfigSidecar\daily_reminder.py`
+
+Current cron jobs already exist for both (checked during setup).
