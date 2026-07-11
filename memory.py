@@ -2,21 +2,16 @@
 """HermesClawZero Memory CLI — capture, search & autosave via Sidecar API.
 
 Usage:
-    python memory.py capture "<text>" [scope_id] [chat_id]
+    python memory.py capture "<text>" [scope_id]
     python memory.py search "<query>" [limit=5]
     python memory.py autosave "<text>" [filename]
 """
-import json, os, sys, re
+import json, os, sys
 import requests
 
-# ---------------------------------------------------------------
-# API config – resolve from env or .env file
-# ---------------------------------------------------------------
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
-
 def _load_dotenv(path: str) -> dict:
-    """Naive .env parser (no deps)."""
     env = {}
     if not os.path.isfile(path):
         return env
@@ -28,8 +23,6 @@ def _load_dotenv(path: str) -> dict:
         env[key.strip()] = val.strip().strip("\"'")
     return env
 
-
-# Order: process env → .env in script dir → .env in cwd
 _env_vars = {**os.environ}
 _env_file = _load_dotenv(os.path.join(SCRIPT_DIR, ".env"))
 _env_cwd = _load_dotenv(os.path.join(os.getcwd(), ".env"))
@@ -46,7 +39,6 @@ API_KEY = (
 
 
 def _api_call(method: str, path: str, **kwargs):
-    """Wrapper that injects API key as query param (preferred by middleware)."""
     url = f"{API_BASE}{path}"
     params = kwargs.pop("params", {})
     params.setdefault("key", API_KEY)
@@ -56,12 +48,11 @@ def _api_call(method: str, path: str, **kwargs):
     return r.json()
 
 
-def capture(text: str, scope_id: str | None = None, chat_id: str | None = None):
+def capture(text: str, scope_id: str | None = None):
+    """Capture to global chat (always findable via default search)."""
     body = {"text": text}
     if scope_id:
         body["scope_id"] = scope_id
-    if chat_id:
-        body["chat_id"] = chat_id
     return _api_call("POST", "/capture", json=body)
 
 
@@ -73,16 +64,12 @@ def search(query: str, limit: int = 5, rerank: bool = False):
 
 
 def autosave(text: str, filename: str | None = None):
-    """Save longer text as a capture, optionally tagged with a filename scope."""
     body = {"text": text}
     if filename:
         body["scope_id"] = f"autosave:{filename}"
     return _api_call("POST", "/capture", json=body)
 
 
-# ---------------------------------------------------------------
-# CLI
-# ---------------------------------------------------------------
 def main():
     if len(sys.argv) < 2:
         print(__doc__, file=sys.stderr)
@@ -92,13 +79,9 @@ def main():
 
     if cmd == "capture":
         if len(sys.argv) < 3:
-            print('Usage: memory.py capture "<text>" [scope_id] [chat_id]', file=sys.stderr)
+            print('Usage: memory.py capture "<text>" [scope_id]', file=sys.stderr)
             sys.exit(1)
-        r = capture(
-            sys.argv[2],
-            sys.argv[3] if len(sys.argv) > 3 else None,
-            sys.argv[4] if len(sys.argv) > 4 else None,
-        )
+        r = capture(sys.argv[2], sys.argv[3] if len(sys.argv) > 3 else None)
         print(json.dumps(r, ensure_ascii=False))
 
     elif cmd == "search":
