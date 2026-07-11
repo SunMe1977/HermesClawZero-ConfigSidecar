@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Memory Dashboard</title>
+  <meta http-equiv="refresh" content="5">
+  <style>
+    body { font-family: sans-serif; background-color: #121212; color: #fff; padding: 20px; }
+    h1 { border-bottom: 2px solid #333; padding-bottom: 10px; }
+    input { padding: 8px; width: 300px; border-radius: 4px; border: 1px solid #444; background: #1e1e1e; color: white; }
+    button { padding: 8px 16px; background: #4da6ff; color: white; border: none; border-radius: 4px; cursor: pointer; }
+    ul { list-style-type: none; padding: 0; margin-top: 20px; }
+    select { margin-left:8px; padding:8px; border-radius:4px; border:1px solid #444; background:#1e1e1e; color:white; max-width:100%; }
+    a { color: #9ec8ff; }
+    .badge-green { display:inline-flex; align-items:center; gap:8px; color:#22c55e; font-weight:700; }
+    .badge-green .dot { width:10px; height:10px; border-radius:50%; background:#22c55e; display:inline-block; box-shadow:0 0 0 2px rgba(34,197,94,0.25); }
+    .badge-blue { display:inline-flex; align-items:center; gap:8px; color:#93c5fd; font-weight:600; }
+    .badge-blue .dot { width:10px; height:10px; border-radius:50%; background:#93c5fd; display:inline-block; }
+    .badge-gray { color:#9ca3af; }
+    .banner { margin:14px 0; padding:10px; border-radius:6px; }
+    .banner-green { background:#1f3b25; border:1px solid #2f6b3c; }
+    .banner-yellow { background:#2a2c11; border:1px solid #757b27; }
+    .banner-blue { background:#1a2538; border:1px solid #3d5f8f; }
+    .health-box { margin:20px 0; padding:12px; border:1px solid #355; border-radius:8px; background:#151f2b; }
+    .health-box h2 { margin-top:0; }
+    .health-box p { margin:6px 0; color:#bcd; }
+    .scope-select { width:320px; }
+    .flex-row { display:flex; gap:16px; flex-wrap:wrap; }
+    .flex-col { flex:1; min-width:320px; }
+    .list-item { margin-bottom:12px; background:#2a2a2a; padding:10px; border-radius:6px; border:1px solid #444; }
+    .list-item a { color:#4da6ff; text-decoration:none; }
+    .list-item .content { color:#ddd; }
+    .btn-sm { padding:4px 8px; border-radius:4px; cursor:pointer; border:none; }
+    .btn-danger { background:#ff4d4d; color:white; }
+    .btn-success { background:#28a745; color:white; }
+    .pagination a { margin:0 5px; padding:5px 10px; color:white; text-decoration:none; border-radius:4px; display:inline-block; }
+    .pagination .active { background:#4da6ff; }
+    .pagination .inactive { background:#333; }
+    .error-box { margin:8px 0 0; padding:10px; background:#3a1d1d; border:1px solid #8b2b2b; border-radius:6px; color:#fecaca; }
+  </style>
+</head>
+<body>
+  <h1>Memory Dashboard (Messages: {{ total_items }} |
+    {% if watchdog_pending_value is not none and watchdog_pending_value > 0 %}
+    <span class="badge-green"><span class="dot"></span>Watchdog pending: {{ watchdog_pending_value }}</span>
+    {% elif watchdog_pending_value is not none %}
+    <span class="badge-blue"><span class="dot"></span>Watchdog pending: 0</span>
+    {% else %}
+    <span class="badge-gray">Watchdog pending: n/a</span>
+    {% endif %}
+  )</h1>
+  <p style="margin:6px 0 4px; color:#bcd;">Watchdog status updated: {{ watchdog_updated_text }}</p>
+  <p style="margin:0 0 14px; color:#9ec8ff;">{{ watchdog_progress_text }}</p>
+  {% if watchdog_last_error %}
+  <div class="error-box">{{ watchdog_last_error }}</div>
+  {% endif %}
+
+  {% if optimizer_msg %}<div class="banner banner-green">{{ optimizer_msg }}</div>{% endif %}
+  {% if dry_run_msg %}<div class="banner banner-yellow">{{ dry_run_msg }}</div>{% endif %}
+  {% if restore_msg %}<div class="banner banner-blue">{{ restore_msg }}</div>{% endif %}
+
+  <form method="get" action="/dashboard">
+    <input type="text" name="query" placeholder="Search..." value="{{ query }}">
+    <select name="selected_scope" class="scope-select">
+      {% for val, label in scope_options %}
+      <option value="{{ val }}"{% if val == active_scope %} selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+    <span style="margin-left:8px; color:#bcd; font-size:0.9rem;">
+      Selected user: {{ selected_scope_label }} ({{ selected_scope_total_count }} messages)
+    </span>
+    <input type="hidden" name="health_stale_days" value="{{ safe_health_stale_days }}">
+    <input type="hidden" name="health_confidence_threshold" value="{{ "%.2f"|format(safe_health_confidence) }}">
+    <input type="hidden" name="health_limit" value="{{ safe_health_limit }}">
+    <button type="submit">Search</button>
+  </form>
+
+  <div class="health-box">
+    <h2>Memory Health</h2>
+    <p>App version: {{ version_info.version }}</p>
+    <p>Update status: {{ "update available" if update_status.get('available') else "up to date" }}</p>
+    <p>Auto update enabled: {{ AUTO_UPDATE_ENABLED }} | Auto apply: {{ AUTO_UPDATE_APPLY }} | Interval: {{ AUTO_UPDATE_INTERVAL_SECONDS }}s</p>
+    <p>Pending review: {{ review.summary.pending_count }} | Recently archived: {{ review.summary.recent_archived_count }}</p>
+    <p style="color:#e6d992;">Dry-run forecast: would decay {{ dry_run.would_decay_count }} | would archive {{ dry_run.would_archive_count }}</p>
+
+    <form method="post" action="/update/run_from_dashboard" style="margin:10px 0;">
+      <input type="hidden" name="query" value="{{ query }}">
+      <input type="hidden" name="selected_scope" value="{{ active_scope }}">
+      <input type="hidden" name="page" value="{{ page }}">
+      <input type="hidden" name="health_stale_days" value="{{ safe_health_stale_days }}">
+      <input type="hidden" name="health_confidence_threshold" value="{{ safe_health_confidence }}">
+      <input type="hidden" name="health_limit" value="{{ safe_health_limit }}">
+      <button type="submit" style="background:#4e8f6c; color:#fff;">Run App Update</button>
+    </form>
+
+    <p><a href="/version">Open Version JSON</a> | <a href="/update/status">Open Update Status JSON</a></p>
+
+    <form method="get" action="/dashboard" style="margin:10px 0; display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+      <input type="hidden" name="page" value="{{ page }}">
+      <input type="hidden" name="query" value="{{ query }}">
+      <input type="hidden" name="selected_scope" value="{{ active_scope }}">
+      <label style="font-size:0.9rem;">Stale days:
+        <input type="number" min="1" max="3650" name="health_stale_days" value="{{ safe_health_stale_days }}" style="width:90px; margin-left:6px;">
+      </label>
+      <label style="font-size:0.9rem;">Confidence threshold:
+        <input type="number" step="0.01" min="0" max="1" name="health_confidence_threshold" value="{{ "%.2f"|format(safe_health_confidence) }}" style="width:90px; margin-left:6px;">
+      </label>
+      <label style="font-size:0.9rem;">Rows:
+        <input type="number" min="1" max="50" name="health_limit" value="{{ safe_health_limit }}" style="width:70px; margin-left:6px;">
+      </label>
+      <button type="submit" style="background:#3a78d4;">Apply Filters</button>
+    </form>
+
+    <form method="post" action="/optimizer/run_from_dashboard" style="margin:10px 0;">
+      <input type="hidden" name="query" value="{{ query }}">
+      <input type="hidden" name="selected_scope" value="{{ active_scope }}">
+      <input type="hidden" name="page" value="{{ page }}">
+      <input type="hidden" name="health_stale_days" value="{{ safe_health_stale_days }}">
+      <input type="hidden" name="health_confidence_threshold" value="{{ safe_health_confidence }}">
+      <input type="hidden" name="health_limit" value="{{ safe_health_limit }}">
+      <button type="submit" style="background:#f0b429; color:#111;">Run Optimizer Now</button>
+    </form>
+
+    <form method="post" action="/optimizer/dry_run_from_dashboard" style="margin:10px 0;">
+      <input type="hidden" name="query" value="{{ query }}">
+      <input type="hidden" name="selected_scope" value="{{ active_scope }}">
+      <input type="hidden" name="page" value="{{ page }}">
+      <input type="hidden" name="health_stale_days" value="{{ safe_health_stale_days }}">
+      <input type="hidden" name="health_confidence_threshold" value="{{ safe_health_confidence }}">
+      <input type="hidden" name="health_limit" value="{{ safe_health_limit }}">
+      <button type="submit" style="background:#9aa3af; color:#111;">Preview Dry Run</button>
+    </form>
+
+    <form method="post" action="/optimizer/undo_latest_manual_archive_from_dashboard" style="margin:10px 0;">
+      <input type="hidden" name="query" value="{{ query }}">
+      <input type="hidden" name="selected_scope" value="{{ active_scope }}">
+      <input type="hidden" name="page" value="{{ page }}">
+      <input type="hidden" name="health_stale_days" value="{{ safe_health_stale_days }}">
+      <input type="hidden" name="health_confidence_threshold" value="{{ safe_health_confidence }}">
+      <input type="hidden" name="health_limit" value="{{ safe_health_limit }}">
+      <button type="submit" style="background:#5e77a8; color:#fff;" {% if not latest_manual_batch_id %}disabled{% endif %}>Undo Last Manual Archive</button>
+    </form>
+    <p style="margin:4px 0; color:#b5c4df; font-size:0.9rem;">Latest manual batch: {{ latest_manual_batch_id or 'none' }}</p>
+
+    <p><a href="/optimizer/review?limit={{ safe_health_limit }}&stale_days={{ safe_health_stale_days }}&confidence_threshold={{ "%.2f"|format(safe_health_confidence) }}&selected_scope={{ active_scope }}">Open Raw Review JSON</a></p>
+
+    <div class="flex-row">
+      <div class="flex-col">
+        <h3 style="margin:8px 0;">Pending Review</h3>
+        <form method="post" action="/optimizer/archive_selected_from_dashboard" style="margin:0;">
+          <input type="hidden" name="query" value="{{ query }}">
+          <input type="hidden" name="selected_scope" value="{{ active_scope }}">
+          <input type="hidden" name="page" value="{{ page }}">
+          <input type="hidden" name="health_stale_days" value="{{ safe_health_stale_days }}">
+          <input type="hidden" name="health_confidence_threshold" value="{{ safe_health_confidence }}">
+          <input type="hidden" name="health_limit" value="{{ safe_health_limit }}">
+          <ul style="margin-top:0;">
+            {% if review.pending_review %}
+            {% for item in review.pending_review[:safe_health_limit] %}
+            <li style="margin:6px 0; padding:8px; border:1px solid #444; border-radius:6px;">
+              <label style="display:block;">
+                <input type="checkbox" name="selected_page_ids" value="{{ item.id }}" style="margin-right:8px;">
+                <b>#{{ item.id }}</b> [{{ item.memory_type }}]
+                confidence={{ "%.2f"|format(item.confidence) }}, age={{ "%.1f"|format(item.age_days) }}d, reason: {{ item.review_reason }}<br>
+                <span style="color:#bbb">{{ item.content[:120] }}</span>
+              </label>
+            </li>
+            {% endfor %}
+            {% else %}
+            <li style="color:#9ad29a;">No pending stale/low-confidence memories.</li>
+            {% endif %}
+          </ul>
+          <button type="submit" style="background:#b85c3b; margin-top:8px;">Archive Selected</button>
+        </form>
+      </div>
+      <div class="flex-col">
+        <h3 style="margin:8px 0;">Recently Archived</h3>
+        <ul style="margin-top:0;">
+          {% if review.archived_recent %}
+          {% for item in review.archived_recent[:5] %}
+          <li style="margin:6px 0; padding:8px; border:1px solid #444; border-radius:6px;">
+            page_id={{ item.page_id }} reason: {{ item.archive_reason }} ({{ "%.1f"|format(item.days_since_archived) }}d ago)
+          </li>
+          {% endfor %}
+          {% else %}
+          <li style="color:#bbb;">No recent archives yet.</li>
+          {% endif %}
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div style="margin:20px 0;">
+    {% if total_pages > 1 %}
+    {% for i in range(1, total_pages + 1) %}
+    <a href="/dashboard?page={{ i }}&query={{ query }}&selected_scope={{ active_scope }}&health_stale_days={{ safe_health_stale_days }}&health_confidence_threshold={{ "%.2f"|format(safe_health_confidence) }}&health_limit={{ safe_health_limit }}"
+       class="pagination {{ 'active' if i == page else 'inactive' }}">{{ i }}</a>
+    {% endfor %}
+    {% endif %}
+  </div>
+
+  <ul>
+    {% for r in rows %}
+    <li class="list-item">
+      <a href="/page_html?page_id={{ r[0] }}">[{{ r[0] }}]</a>
+      <span class="content">{{ r[1][:80] }}</span>
+      <form action="/delete" method="post" style="display:inline; float:right;">
+        <input type="hidden" name="page_id" value="{{ r[0] }}">
+        <button type="submit" class="btn-sm btn-danger" onclick="return confirm('Delete?')">Delete</button>
+      </form>
+      <form action="/tag_auto/{{ r[0] }}" method="post" style="display:inline; float:right; margin-right:10px;">
+        <button type="submit" class="btn-sm btn-success">Auto-Tag</button>
+      </form>
+    </li>
+    {% endfor %}
+  </ul>
+
+  <div style="margin:20px 0;">
+    {% if total_pages > 1 %}
+    {% for i in range(1, total_pages + 1) %}
+    <a href="/dashboard?page={{ i }}&query={{ query }}&selected_scope={{ active_scope }}&health_stale_days={{ safe_health_stale_days }}&health_confidence_threshold={{ "%.2f"|format(safe_health_confidence) }}&health_limit={{ safe_health_limit }}"
+       class="pagination {{ 'active' if i == page else 'inactive' }}">{{ i }}</a>
+    {% endfor %}
+    {% endif %}
+  </div>
+</body>
+</html>
