@@ -227,6 +227,17 @@ AI developers · Hermes users · OpenClaw users · Self-hosters · MCP enthusias
 
 Built for AI Agent autonomy.
 
+---
+
+<p align="center">
+  <em>
+    If you enjoy this project, consider sharing your experience —
+    a short video review, a tweet, or a TikTok post helps others discover it.
+  </em>
+</p>
+
+---
+
 <a href="https://github.com/nousresearch/hermes-agent"><img src="https://cdn.jsdelivr.net/gh/selfhst/icons/png/hermes-agent.png" alt="Hermes Agent" width="15%"></a>
 <a href="https://github.com/openclaw/openclaw"><img src="https://openclaw.ai/logo.png" alt="OpenClaw" width="30%"></a>
 <a href="https://ollama.com/"><img src="https://ollama.com/public/ollama.png" alt="Ollama" width="15%"></a>

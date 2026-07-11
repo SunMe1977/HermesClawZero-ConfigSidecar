@@ -1,5 +1,5 @@
 ---
-description: "Your agent remembers everything across sessions — no more repeating preferences, project context, or past decisions. Installs ready-to-use capture triggers so the agent saves facts automatically, loads context on new chats, and can back up session history on demand. Requires HermesClawZero Sidecar (local, private, PostgreSQL+pgvector)."
+description: "Your agent remembers everything across sessions — no more repeating preferences, project context, or past decisions. Features a live Dashboard with Memory Galaxy visualization: interactive 3D canvas showing tenant orbits, glowing nodes, nebula shader, and hover info cards. Installs ready-to-use capture triggers so the agent saves facts automatically, loads context on new chats, and can back up session history on demand. Requires HermesClawZero Sidecar (local, private, PostgreSQL+pgvector)."
 tags:
   - memory
   - hermes

@@ -1,7 +1,7 @@
 ---
 name: "hermesclawzero-auto-memory"
 description: "Auto-capture chat to Hermes DB, load context on fresh chats, scheduled DB maintenance."
-version: "1.2.1"
+version: "1.4.0"
 tags:
   - memory
   - hermes
@@ -22,6 +22,41 @@ topics:
 
 Automatically captures conversation context to HermesClawZero DB so the agent remembers across sessions. Loads relevant memories on fresh chats and supports scheduled DB maintenance.
 
+> 🌌 **New in v1.4.0:** Interactive **Memory Galaxy** dashboard — full-screen animated Canvas visualization with tenant orbits, glowing nodes, nebula shader, hover info cards, zoom & idle rotation.
+
+---
+
+## 🤖 One‑Click Install
+
+Paste this into **Hermes**, **OpenClaw**, or any AI agent:
+
+```text
+Install this project from GitHub:
+https://github.com/SunMe1977/HermesClawZero-ConfigSidecar
+```
+
+**⬆️ The agent clones, configures, and starts everything.**  
+After ~30s open → [`http://localhost:8010/dashboard`](http://localhost:8010/dashboard)
+
+### What gets installed:
+| Step | What happens |
+|------|-------------|
+| 1 | Repo cloned + `.env` configured |
+| 2 | Docker Compose starts PostgreSQL + Ollama + API |
+| 3 | Dashboard live on `:8010` |
+| 4 | Memory skill activated in Hermes |
+| 5 | Auto-capture begins on next conversation |
+
+### Manual start (if you don't have an agent):
+```bash
+git clone https://github.com/SunMe1977/HermesClawZero-ConfigSidecar.git
+cd HermesClawZero-ConfigSidecar
+setup.bat          # Windows   (or: ./setup.sh on Linux)
+start.bat          # Windows   (or: ./start.sh on Linux)
+```
+
+---
+
 ## ⚠️ Privacy & Consent
 
 By activating this skill you consent to automatic memory capture.
@@ -38,6 +73,43 @@ python C:\dev\HermesClawZero-ConfigSidecar\memory.py <command> "<text>"
 ```
 
 Config is read from `.env` or env vars (`MEM_PUBLIC_URL`, `API_KEY`) automatically.
+
+---
+
+## 🔄 Auto-Capture Cron (Setup on Install)
+
+When a user runs the one-click install (or says "install this skill"), **set up these cron jobs automatically:**
+
+### A. Session Memory Capture — every 30m
+```bash
+hermes cron create \
+  --name "hermes-auto-capture" \
+  --schedule "30m" \
+  --prompt "Review the recent conversation and capture any important facts, preferences, decisions, or project details using memory.py capture. Skip small talk, greetings, and already-captured info." \
+  --skills hermesclawzero-memory
+```
+
+### B. Nightly Memory Gardener (auto-tagging)
+```bash
+hermes cron create \
+  --name "hermes-memory-gardener" \
+  --schedule "0 3 * * *" \
+  --prompt "Run python memory.py gardener to auto-tag uncategorized memories. Report only errors." \
+  --script "C:\dev\HermesClawZero-ConfigSidecar\gardener.py" \
+  --no-agent true
+```
+
+### C. Daily Reminder (opt-in, ask first)
+Only if user says yes:
+```bash
+hermes cron create \
+  --name "hermes-daily-reminder" \
+  --schedule "0 9 * * *" \
+  --prompt "Summarize yesterday's top memories and remind user of open items." \
+  --skills hermesclawzero-memory
+```
+
+> All three run silently — the user won't see cron output unless something fails.
 
 ---
 
@@ -122,11 +194,20 @@ Current cron jobs already exist for both (checked during setup).
 
 ```bash
 # Load context (session start, silent):
-python C:\dev\HermesClawZero-ConfigSidecar\memory.py search "user profile preferences current project state" 5
+python C:\\dev\\HermesClawZero-ConfigSidecar\\memory.py search "user profile preferences current project state" 5
 
 # Save a fact (deterministic triggers above):
-python C:\dev\HermesClawZero-ConfigSidecar\memory.py capture "<fact>" [scope_id]
+python C:\\dev\\HermesClawZero-ConfigSidecar\\memory.py capture "<fact>" [scope_id]
 
 # Backup session (on request):
-python C:\dev\HermesClawZero-ConfigSidecar\memory.py autosave "<text>" [filename]
+python C:\\dev\\HermesClawZero-ConfigSidecar\\memory.py autosave "<text>" [filename]
 ```
+
+---
+
+<p align="center">
+  <em>
+    If you enjoy this skill, consider sharing your experience —
+    a short video review, a tweet, or a TikTok post helps others discover it.
+  </em>
+</p>

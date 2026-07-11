@@ -1,5 +1,27 @@
 # Changelog
 
+## 1.4.0 (2026-07-11)
+
+### Added
+- **Memory Galaxy Dashboard** — interactive full-screen Canvas visualization
+  - Tenant orbits with pulsing glowing nodes and comet-like trails
+  - Nebula shader (animated blue/violet/pink gas clouds)
+  - Parallax depth layers (mouse-driven foreground/background offset)
+  - Hover info cards showing tenant, timestamp, tags per memory
+  - Mouse wheel zoom (0.3×–3×), idle auto-rotation after 5s
+  - Memory cluster blobs drifting near their tenant orbits
+- `dashboard.html` + `routes/__init__.py` — galaxy data pipeline (top 10 scopes, confidence stats)
+- `images/galaxy.png`, `images/galaxy-hover.gif` — README screenshots
+
+### Changed
+- Dashboard auto-refresh uses JS setTimeout instead of `<meta http-equiv=refresh>` (pause/resume with galaxy toggle)
+- Jinja2 `cache_size=0` for development template reloading
+- README restructured with Dashboard + Memory Galaxy feature sections
+
+## 1.3.1 (2026-07-11)
+
+_ClawHub auto-publish_
+
 ## 1.1.0 (2026-07-11)
 
 ### Added
