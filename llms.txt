@@ -1,0 +1,26 @@
+# HermesClawZero-ConfigSidecar
+
+PostgreSQL-backed long-term memory for Hermes & OpenClaw AI agents. Docker-based sidecar with Dashboard, CLI, MCP, and REST API.
+
+## Docs
+- README: https://github.com/SunMe1977/HermesClawZero-ConfigSidecar#readme
+- AGENTS.md: https://github.com/SunMe1977/HermesClawZero-ConfigSidecar/blob/main/AGENTS.md
+- ClawHub Skill: https://clawhub.ai/sunme1977/skills/hermesclawzero-auto-memory
+- Changelog: https://github.com/SunMe1977/HermesClawZero-ConfigSidecar/blob/main/CHANGELOG.md
+
+## Quick Start
+```
+git clone https://github.com/SunMe1977/HermesClawZero-ConfigSidecar.git
+cd HermesClawZero-ConfigSidecar
+docker compose --profile ollama up -d
+```
+Dashboard: http://localhost:8010/dashboard
+
+## Key Features
+- Zero API keys (Ollama embeddings, local-only)
+- Dashboard with memory timeline + search + tenant isolation
+- 6 MCP tools (capture, search, list, stats, delete, review)
+- CLI: `python memory.py capture/search/autosave`
+- REST API: POST /capture, GET /search
+- Auto-update, auto-install for agents
+- ClawHub skill: `openclaw skills install @sunme1977/hermesclawzero-auto-memory`
