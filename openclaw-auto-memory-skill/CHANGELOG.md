@@ -1,31 +1,65 @@
 # Changelog
 
+## 2.0.0 (2026-07-11)
+
+### Added
+- **Knowledge Graph** — entities + relationships + entity_mentions tables, rule-based entity extraction, depth-traversal graph queries (`/graph/*` endpoints)
+- **Memory Tiers** — Hot/Warm/Standard/Cold auto-assignment based on importance, recency, confidence
+- **Memory Versioning** — `memory_versions` table tracks every change with reason
+- **Memory Compression** — intelligent multi-line compression (keep first 40%, last 20%, compress middle)
+- **Memory Consolidation** — embedding-similarity clustering groups related memories into summarized parents
+- **Memory Merge** — `/memory/merge` endpoint merges multiple memories, reparents sources
+- **Memory Editor** — `/memory/update/{id}` inline content + type editing
+- **Memory Feedback** — `/feedback/{id}?helpful=true/false` adjusts importance + confidence
+- **Memory Nudge** — `/nudge` returns top important recent facts (inspired by Hermes Built-In nudges)
+- **Temporal Search** — `?days_back=N` filter on `GET /search`
+- **Self-wiring Graph** — 15 relation patterns (built/leads/part_of/implements/located_at/communicates/preceded_by + original 6)
+- **pgvector HNSW Index** — automatic HNSW index creation (falls back to IVFFlat)
+- **Auto-Sync Daemon** — background thread imports new Hermes sessions every 5 minutes
+
+### Changed
+- Capture pipeline now extracts entities + relationships + compressed version on every `POST /capture`
+- Optimizer loop runs tier assignment + consolidation every cycle
+- Dashboard auto-refresh uses JS setTimeout (galaxy stays open)
+- README comparison table expanded to 6 systems (Cognee, LangMem, Supermemory, gBrain, Mem0)
+
+## 1.5.0 (2026-07-11)
+
+### Added
+- CONTRIBUTING.md with PR review structure, linting, commit conventions, merge strategy
+- PR template (.github/PULL_REQUEST_TEMPLATE.md)
+- "Contributions Welcome" section in README and SKILL.md
+
+## 1.4.4 (2026-07-11)
+
+### Added
+- Document auto-import step in One-Click Install table
+
+## 1.4.3 (2026-07-11)
+
+### Added
+- Subtle CTA at end of README and SKILL.md
+
+## 1.4.2 (2026-07-11)
+
+### Added
+- Auto-Capture Cron section in SKILL.md (3 cron jobs for auto-install)
+
+## 1.4.1 (2026-07-11)
+
+### Added
+- One-Click Install section in SKILL.md
+
 ## 1.4.0 (2026-07-11)
 
 ### Added
-- **Memory Galaxy Dashboard** — interactive full-screen Canvas visualization
-  - Tenant orbits with pulsing glowing nodes and comet-like trails
-  - Nebula shader (animated blue/violet/pink gas clouds)
-  - Parallax depth layers (mouse-driven foreground/background offset)
-  - Hover info cards showing tenant, timestamp, tags per memory
-  - Mouse wheel zoom (0.3×–3×), idle auto-rotation after 5s
-  - Memory cluster blobs drifting near their tenant orbits
-- `dashboard.html` + `routes/__init__.py` — galaxy data pipeline (top 10 scopes, confidence stats)
-- `images/galaxy.png`, `images/galaxy-hover.gif` — README screenshots
-
-### Changed
-- Dashboard auto-refresh uses JS setTimeout instead of `<meta http-equiv=refresh>` (pause/resume with galaxy toggle)
-- Jinja2 `cache_size=0` for development template reloading
-- README restructured with Dashboard + Memory Galaxy feature sections
+- Memory Galaxy Dashboard — interactive full-screen Canvas visualization
 
 ## 1.3.1 (2026-07-11)
 
 _ClawHub auto-publish_
 
 ## 1.1.0 (2026-07-11)
-
-### Added
-- `permissions.yaml` — declared minimum permissions with justifications
 - `secrets.yaml` — documented required environment secrets
 - `scripts/install.ps1` — install verification script (checks Python, deps, Sidecar)
 - `scripts/update.ps1` — update check script (compares with ClawHub)

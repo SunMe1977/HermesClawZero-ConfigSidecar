@@ -21,14 +21,15 @@ from hermesclaw.auth import (
 )
 from hermesclaw.db import connect_db, ensure_phase1_schema, cleanup_orphaned_embeddings
 from hermesclaw.models import CaptureRequest, BatchCaptureRequest, ArchiveSelectionRequest, WatchdogStatusRequest
-from hermesclaw.memory import _capture_sync, _capture_batch_sync, _search_sync
+from hermesclaw.memory import _capture_sync, _capture_with_graph, _capture_batch_sync, _search_sync
 from hermesclaw.scoring import clamp, normalize_scope_id, build_scope_filter, format_scope_label
 from hermesclaw.embeddings import provider_runtime_info
 from hermesclaw.optimizer import (
-    run_decay_and_archive_once, get_optimizer_review, get_optimizer_dry_run,
+    run_decay_and_archive_once, run_tier_assignment, get_optimizer_review, get_optimizer_dry_run,
     archive_selected_pages, get_latest_manual_archive_batch_id, restore_archive_batch,
 )
 from hermesclaw.importer import import_hermes_sessions
+from hermesclaw.graph import query_entity_graph, get_memories_for_entity, get_top_entities
 from hermesclaw.update import get_update_status, run_update, get_version_info
 
 logger = logging.getLogger("hermesclaw.routes")
@@ -132,7 +133,7 @@ async def capture(
     chat_id: str | None = None,
     body: CaptureRequest | None = None,
 ):
-    return await run_in_threadpool(_capture_sync, text, scope_id, chat_id, body)
+    return await run_in_threadpool(_capture_with_graph, text, scope_id, chat_id, body)
 
 
 @router.post("/capture/batch", dependencies=[Depends(require_api_key)])
@@ -157,8 +158,10 @@ async def search(
     rerank_results: bool = False,
     scope_id: str | None = None,
     chat_id: str = "global",
+    search_type: str = "hybrid",
+    days_back: int | None = None,
 ):
-    return await run_in_threadpool(_search_sync, query, limit, rerank_results, scope_id, chat_id)
+    return await run_in_threadpool(_search_sync, query, limit, rerank_results, scope_id, chat_id, search_type, days_back)
 
 
 @router.get("/version")
@@ -433,6 +436,13 @@ async def run_optimizer_now():
     return {"status": "ok", "optimizer": stats}
 
 
+@router.post("/optimizer/tiers", dependencies=[Depends(get_current_username)])
+async def run_optimizer_tiers_now():
+    """Recalculate memory tiers and run consolidation."""
+    stats = await run_in_threadpool(run_tier_assignment)
+    return {"status": "ok", "tiers": stats}
+
+
 @router.get("/optimizer/dry_run", dependencies=[Depends(get_current_username)])
 async def optimizer_dry_run(
     limit: int = 25,
@@ -618,6 +628,157 @@ async def run_import_post():
     """Trigger a full import of Hermes sessions."""
     result = await run_in_threadpool(import_hermes_sessions)
     return {"status": "ok", "import": result}
+
+
+# ── Memory Feedback ──
+
+@router.post("/feedback/{page_id}", dependencies=[Depends(get_current_username)])
+async def memory_feedback(page_id: int, helpful: bool = True):
+    """Adjust memory importance based on user feedback (upvote/downvote)."""
+    with connect_db() as conn:
+        with conn.cursor() as cur:
+            if helpful:
+                cur.execute(
+                    "UPDATE pages SET importance = LEAST(1.0, importance + 0.05), confidence = LEAST(1.0, confidence + 0.03), frequency = frequency + 1 WHERE id = %s",
+                    (page_id,),
+                )
+            else:
+                cur.execute(
+                    "UPDATE pages SET importance = GREATEST(0.05, importance - 0.08), confidence = GREATEST(0.05, confidence - 0.05) WHERE id = %s",
+                    (page_id,),
+                )
+            conn.commit()
+            updated = cur.rowcount > 0
+    return {"status": "ok", "updated": updated, "page_id": page_id, "helpful": helpful}
+
+
+# ── Memory Editor ──
+
+@router.post("/memory/update/{page_id}", dependencies=[Depends(get_current_username)])
+async def memory_update(page_id: int, content: str = Form(""), memory_type: str | None = Form(None)):
+    """Update a memory's content and/or type inline (Dashboard editor)."""
+    with connect_db() as conn:
+        with conn.cursor() as cur:
+            if content:
+                cur.execute("UPDATE pages SET content = %s, updated_at = NOW() WHERE id = %s", (content, page_id))
+            if memory_type:
+                cur.execute("UPDATE pages SET memory_type = %s WHERE id = %s", (memory_type, page_id))
+            conn.commit()
+            updated = cur.rowcount > 0
+    return {"status": "ok", "updated": updated, "page_id": page_id}
+
+
+@router.post("/memory/merge", dependencies=[Depends(get_current_username)])
+async def memory_merge(source_ids: list[int] = Form(...), target_id: int | None = Form(None)):
+    """Merge multiple memories into one. Source memories become children of the target."""
+    if not source_ids:
+        return {"status": "error", "detail": "source_ids required"}
+    with connect_db() as conn:
+        with conn.cursor() as cur:
+            if target_id is None or target_id not in source_ids:
+                cur.execute(
+                    "SELECT id FROM pages WHERE id = ANY(%s) ORDER BY importance DESC LIMIT 1",
+                    (source_ids,),
+                )
+                row = cur.fetchone()
+                if not row:
+                    return {"status": "error", "detail": "No valid source IDs"}
+                target_id = row[0]
+            others = [sid for sid in source_ids if sid != target_id]
+            if others:
+                cur.execute("UPDATE pages SET parent_id = %s, memory_tier = 'cold' WHERE id = ANY(%s)", (target_id, others))
+                cur.execute("SELECT content FROM pages WHERE id = %s", (target_id,))
+                target_content = cur.fetchone()[0]
+                cur.execute("SELECT content FROM pages WHERE id = ANY(%s)", (others,))
+                source_contents = [r[0] for r in cur.fetchall()]
+                merged = target_content + "\n\n---\n\n" + "\n\n".join(source_contents)
+                cur.execute("UPDATE pages SET content = %s, frequency = frequency + %s, importance = LEAST(1.0, importance + 0.05), updated_at = NOW() WHERE id = %s",
+                    (merged, len(others), target_id))
+            conn.commit()
+    return {"status": "ok", "target_id": target_id, "merged": len(source_ids)}
+
+
+# ── Memory Nudge (Hermes Built-In inspired periodic context) ──
+
+@router.get("/nudge", dependencies=[Depends(get_current_username)])
+async def memory_nudge(scope_id: str | None = None, limit: int = 5):
+    """Return a 'memory nudge' — top important recent facts the agent should know about this scope/user."""
+    from hermesclaw.scoring import build_scope_filter
+    scope_clause, scope_params = build_scope_filter(scope_id, "p.scope_id")
+    with connect_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""SELECT p.id, p.content, p.memory_type, p.importance, p.confidence, p.frequency,
+                           ROUND(EXTRACT(EPOCH FROM (NOW() - COALESCE(p.last_used, p.created_at))) / 86400.0, 1) AS age_days
+                    FROM pages p
+                    WHERE p.is_archived = FALSE
+                      {scope_clause}
+                    ORDER BY p.importance DESC, p.frequency DESC, p.last_used DESC
+                    LIMIT %s""",
+                (*scope_params, limit),
+            )
+            top = [
+                {"id": r[0], "content": r[1], "type": r[2],
+                 "importance": r[3], "confidence": r[4], "frequency": r[5], "age_days": r[6]}
+                for r in cur.fetchall()
+            ]
+
+            cur.execute(
+                f"""SELECT p.scope_id, COUNT(*) as cnt
+                    FROM pages p
+                    WHERE p.is_archived = FALSE {scope_clause}
+                    GROUP BY p.scope_id ORDER BY cnt DESC LIMIT 5""",
+                scope_params,
+            )
+            scope_breakdown = {r[0]: r[1] for r in cur.fetchall()}
+
+    summary_prompt = f"Recent context for {scope_id or 'all scopes'}:\n" + "\n".join(
+        f"- [{m['type']}] {m['content'][:200]}" for m in top
+    )
+
+    return {
+        "status": "ok",
+        "nudge": {
+            "summary": summary_prompt,
+            "top_memories": top,
+            "scope_breakdown": scope_breakdown,
+            "total_memories_in_scope": sum(scope_breakdown.values()) if scope_breakdown else None,
+        },
+    }
+
+
+# ── Knowledge Graph endpoints ──
+
+@router.get("/graph/entities", dependencies=[Depends(get_current_username)])
+async def graph_top_entities(limit: int = 20):
+    """Get top entities by frequency."""
+    with connect_db() as conn:
+        entities = get_top_entities(conn, limit=limit)
+    return {"status": "ok", "entities": entities}
+
+
+@router.get("/graph/entity/{entity_name}", dependencies=[Depends(get_current_username)])
+async def graph_entity_detail(entity_name: str, depth: int = 2):
+    """Get knowledge graph subgraph for an entity."""
+    with connect_db() as conn:
+        graph = query_entity_graph(conn, entity_name, depth=depth)
+        memories = get_memories_for_entity(conn, entity_name)
+    return {"status": "ok", "graph": graph, "memories": memories}
+
+
+@router.get("/graph/search", dependencies=[Depends(get_current_username)])
+async def graph_search(q: str = ""):
+    """Search entities by name prefix."""
+    if not q:
+        return {"status": "ok", "entities": []}
+    with connect_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT id, name, entity_type, frequency FROM entities WHERE name ILIKE %s ORDER BY frequency DESC LIMIT 20",
+                (f"%{q}%",),
+            )
+            entities = [{"id": r[0], "name": r[1], "type": r[2], "frequency": r[3]} for r in cur.fetchall()]
+    return {"status": "ok", "entities": entities}
 
 
 @router.post("/update/run_from_dashboard", dependencies=[Depends(get_current_username)])

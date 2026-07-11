@@ -4,6 +4,7 @@ import uuid
 import logging
 from hermesclaw.db import connect_db
 from hermesclaw.scoring import build_scope_filter
+from hermesclaw.consolidation import apply_tier_assignments, compute_tier_stats, find_consolidation_candidates, consolidate_similar_memories
 
 logger = logging.getLogger("hermesclaw.optimizer")
 
@@ -299,6 +300,19 @@ def archive_selected_pages(
         "archive_reason": archive_reason,
         "archive_batch_id": batch_id,
     }
+
+
+def run_tier_assignment() -> dict:
+    """Recalculate memory tiers and run consolidation."""
+    with connect_db() as conn:
+        apply_tier_assignments(conn)
+        tiers = compute_tier_stats(conn)
+        candidates = find_consolidation_candidates(conn, limit=30)
+        consolidation = {"groups": 0, "memories_consolidated": 0}
+        if len(candidates) >= 2:
+            consolidation = consolidate_similar_memories(conn, candidates)
+        conn.commit()
+    return {"tiers": tiers, "consolidation": consolidation}
 
 
 def get_latest_manual_archive_batch_id() -> str | None:

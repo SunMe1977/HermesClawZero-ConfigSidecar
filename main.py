@@ -15,7 +15,7 @@ from hermesclaw.auth import (
     WATCHDOG_STATUS,
 )
 from hermesclaw.db import ensure_phase1_schema, cleanup_orphaned_embeddings, close_db_pool
-from hermesclaw.optimizer import run_decay_and_archive_once
+from hermesclaw.optimizer import run_decay_and_archive_once, run_tier_assignment
 from hermesclaw.update import get_update_status, run_update
 from hermesclaw.importer import import_hermes_sessions
 from hermesclaw.routes import router
@@ -32,7 +32,7 @@ async def url_api_key_middleware(request: Request, call_next):
     exempt_prefixes = (
         "/docs/", "/dashboard", "/delete", "/export",
         "/tag_auto/", "/page_html", "/optimizer/", "/update/",
-        "/import",
+        "/import", "/graph", "/feedback", "/search", "/memory", "/nudge",
     )
 
     if path in exempt_exact_paths or any(path.startswith(p) for p in exempt_prefixes):
@@ -72,6 +72,12 @@ def decay_loop() -> None:
                 "[OPTIMIZER] decay=%s archived=%s deleted=%s",
                 stats["decayed"], stats["archived"], stats["deleted"],
             )
+            # Run tier assignment every cycle too
+            try:
+                tiers = run_tier_assignment()
+                logger.info("[TIER] %s", tiers.get("tiers"))
+            except Exception as tier_ex:
+                logger.warning("[TIER] error: %s", tier_ex)
         except Exception as ex:
             logger.exception("[OPTIMIZER] error: %s", ex)
         _shutdown_event.wait(DECAY_INTERVAL_SECONDS)
@@ -110,6 +116,18 @@ def _supervised_sync_loop() -> None:
         _shutdown_event.wait(5)
 
 
+def _auto_import_loop() -> None:
+    """Periodically import new Hermes sessions (auto-sync)."""
+    while not _shutdown_event.is_set():
+        try:
+            result = import_hermes_sessions()
+            if result.get("sessions_imported", 0) > 0:
+                logger.info("[AUTO-SYNC] Imported %d new session(s)", result["sessions_imported"])
+        except Exception as ex:
+            logger.debug("[AUTO-SYNC] check failed (non-fatal): %s", ex)
+        _shutdown_event.wait(300)  # every 5 minutes
+
+
 # ---------------------------------------------------------------------------
 # Startup / Shutdown
 # ---------------------------------------------------------------------------
@@ -138,6 +156,13 @@ def startup_event():
                 logger.info("[IMPORT] Skipped: %s", result.get("reason", "unknown"))
         except Exception as ex:
             logger.warning("[IMPORT] Non-fatal error: %s", ex)
+
+        # First-run tier assignment + graph schema
+        try:
+            tiers = run_tier_assignment()
+            logger.info("[TIER] memory tiers: %s", tiers.get("tiers"))
+        except Exception as ex:
+            logger.warning("[TIER] Non-fatal error: %s", ex)
     except Exception as ex:
         raise RuntimeError(f"Startup failed during database initialization: {ex}") from ex
 
@@ -146,6 +171,7 @@ def startup_event():
     if AUTO_UPDATE_ENABLED:
         threading.Thread(target=auto_update_loop, daemon=True).start()
     threading.Thread(target=_supervised_sync_loop, daemon=True).start()
+    threading.Thread(target=_auto_import_loop, daemon=True).start()
 
 
 @app.on_event("shutdown")

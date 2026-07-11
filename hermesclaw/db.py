@@ -181,6 +181,89 @@ def ensure_phase1_schema() -> None:
             cur.execute("CREATE INDEX IF NOT EXISTS idx_pages_archive_batch ON pages_archive(archive_batch_id)")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_pages_scope_id ON pages(scope_id)")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_pages_chat_id ON pages(chat_id)")
+
+            # ── Knowledge Graph (entities + relationships) ──
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS entities (
+                  id SERIAL PRIMARY KEY,
+                  name TEXT NOT NULL,
+                  entity_type TEXT NOT NULL DEFAULT 'unknown',
+                  canonical_name TEXT,
+                  metadata JSONB DEFAULT '{}',
+                  first_seen TIMESTAMP DEFAULT NOW(),
+                  last_seen TIMESTAMP DEFAULT NOW(),
+                  frequency INT DEFAULT 1
+                )
+            """)
+            cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_entities_name ON entities(name)")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_entities_type ON entities(entity_type)")
+
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS entity_mentions (
+                  id SERIAL PRIMARY KEY,
+                  entity_id INT REFERENCES entities(id) ON DELETE CASCADE,
+                  page_id INT REFERENCES pages(id) ON DELETE CASCADE,
+                  context TEXT,
+                  mentioned_at TIMESTAMP DEFAULT NOW()
+                )
+            """)
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_em_entity ON entity_mentions(entity_id)")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_em_page ON entity_mentions(page_id)")
+
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS relationships (
+                  id SERIAL PRIMARY KEY,
+                  source_entity_id INT REFERENCES entities(id) ON DELETE CASCADE,
+                  target_entity_id INT REFERENCES entities(id) ON DELETE CASCADE,
+                  relation_type TEXT NOT NULL DEFAULT 'related_to',
+                  weight REAL DEFAULT 1.0,
+                  metadata JSONB DEFAULT '{}',
+                  first_seen TIMESTAMP DEFAULT NOW(),
+                  last_seen TIMESTAMP DEFAULT NOW(),
+                  frequency INT DEFAULT 1,
+                  UNIQUE(source_entity_id, target_entity_id, relation_type)
+                )
+            """)
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_rel_source ON relationships(source_entity_id)")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_rel_target ON relationships(target_entity_id)")
+
+            # ── Memory versions (history tracking) ──
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS memory_versions (
+                  id SERIAL PRIMARY KEY,
+                  page_id INT REFERENCES pages(id) ON DELETE CASCADE,
+                  content TEXT NOT NULL,
+                  memory_type TEXT,
+                  importance REAL,
+                  confidence REAL,
+                  version INT NOT NULL DEFAULT 1,
+                  change_reason TEXT DEFAULT 'capture',
+                  created_at TIMESTAMP DEFAULT NOW()
+                )
+            """)
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_mv_page ON memory_versions(page_id)")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_mv_version ON memory_versions(page_id, version)")
+
+            # ── Memory tiers (hot/warm/cold) ──
+            cur.execute("ALTER TABLE pages ADD COLUMN IF NOT EXISTS memory_tier TEXT NOT NULL DEFAULT 'standard'")
+            cur.execute("ALTER TABLE pages ADD COLUMN IF NOT EXISTS summary_text TEXT")
+            cur.execute("ALTER TABLE pages ADD COLUMN IF NOT EXISTS compressed_content TEXT")
+            cur.execute("ALTER TABLE pages ADD COLUMN IF NOT EXISTS parent_id INT")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_pages_tier ON pages(memory_tier)")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_pages_parent ON pages(parent_id)")
+
+            # ── pgvector HNSW index for fast ANN search ──
+            try:
+                cur.execute("CREATE INDEX IF NOT EXISTS idx_embeddings_hnsw ON embeddings USING hnsw (embedding vector_cosine_ops) WITH (m=16, ef_construction=200)")
+                logger.info("[SCHEMA] HNSW index created/verified")
+            except Exception:
+                # HNSW requires pgvector >= 0.5; fall back to IVFFlat
+                try:
+                    cur.execute("CREATE INDEX IF NOT EXISTS idx_embeddings_ivfflat ON embeddings USING ivfflat (embedding vector_cosine_ops) WITH (lists=100)")
+                    logger.info("[SCHEMA] IVFFlat index created/verified (HNSW not available)")
+                except Exception:
+                    logger.warning("[SCHEMA] Could not create vector index — pgvector may need upgrade")
+
             conn.commit()
 
     from hermesclaw.embeddings import infer_embedding_dimension

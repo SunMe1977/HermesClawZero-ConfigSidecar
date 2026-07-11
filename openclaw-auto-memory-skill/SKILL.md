@@ -1,7 +1,7 @@
 ---
 name: "hermesclawzero-auto-memory"
 description: "Auto-capture chat to Hermes DB, load context on fresh chats, scheduled DB maintenance."
-version: "1.4.0"
+version: "2.0.0"
 tags:
   - memory
   - hermes

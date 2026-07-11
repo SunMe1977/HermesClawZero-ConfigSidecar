@@ -11,6 +11,8 @@ from hermesclaw.scoring import (
     score_memory, normalize_scope_id, normalize_chat_id,
     derive_chat_id, compute_hybrid_score,
 )
+from hermesclaw.graph import process_memory_for_graph
+from hermesclaw.consolidation import store_compressed_version
 
 logger = logging.getLogger("hermesclaw.memory")
 client = ollama.Client(host=OLLAMA_HOST)
@@ -160,6 +162,29 @@ def _capture_sync(
     }
 
 
+def _capture_with_graph(
+    text: str | None = None,
+    scope_id: str | None = None,
+    chat_id: str | None = None,
+    body=None,
+):
+    """Capture memory and extract entities + relationships. Called by /capture endpoint."""
+    result = _capture_sync(text, scope_id, chat_id, body)
+    if result.get("status") in ("ok", "ok_degraded") and "page_id" in result:
+        page_id = result["page_id"]
+        try:
+            with connect_db() as conn:
+                # Entity extraction (cold path — no LLM dependency)
+                process_memory_for_graph(conn, result.get("content", text or ""), page_id)
+                # Compress + version
+                store_compressed_version(conn, page_id, result.get("content", text or ""))
+                conn.commit()
+        except Exception as ex:
+            logger.warning("Graph/consolidation post-capture failed (non-fatal): %s", ex)
+        result["graph_processed"] = True
+    return result
+
+
 def _capture_batch_sync(body):
     if not body.items:
         raise HTTPException(status_code=400, detail="items are required")
@@ -261,11 +286,19 @@ def _search_sync(
     rerank_results: bool = False,
     scope_id: str | None = None,
     chat_id: str = "global",
+    search_type: str = "hybrid",
+    days_back: int | None = None,
 ):
     from hermesclaw.embeddings import generate_embedding
 
     search_scope_id = normalize_scope_id(scope_id)
     search_chat_id = normalize_chat_id(chat_id)
+
+    # Temporal filter
+    days_filter = ""
+    days_params: list = []
+    if days_back is not None and days_back > 0:
+        days_filter = f" AND COALESCE(p.last_used, p.created_at) >= NOW() - INTERVAL '{days_back} days'"
 
     if query.strip() == "":
         with connect_db() as conn:
@@ -338,15 +371,16 @@ def _search_sync(
                     WHERE p.is_archived = FALSE
                       AND p.chat_id = %s
                       AND (%s::text IS NULL OR p.scope_id = %s::text)
+                      {days_filter}
                     ORDER BY vector_distance
                     LIMIT %s
                     """,
-                    (qemb_str, search_chat_id, search_scope_id, search_scope_id, limit * 2),
+                    (qemb_str, search_chat_id, search_scope_id, search_scope_id, *days_params, limit * 2),
                 )
                 vector_rows = cur.fetchall()
 
             cur.execute(
-                """
+                f"""
                 SELECT p.id, p.content, p.memory_type, p.importance, p.confidence, p.frequency,
                        EXTRACT(EPOCH FROM (NOW() - COALESCE(p.last_retrieved, p.last_used, p.created_at))) / 86400.0 AS age_days,
                        ts_rank_cd(to_tsvector('english', p.content), plainto_tsquery('english', %s)) AS lexical_rank
@@ -354,6 +388,7 @@ def _search_sync(
                 WHERE p.is_archived = FALSE
                     AND p.chat_id = %s
                     AND (%s::text IS NULL OR p.scope_id = %s::text)
+                    {days_filter}
                   AND to_tsvector('english', p.content) @@ plainto_tsquery('english', %s)
                 ORDER BY lexical_rank DESC
                 LIMIT %s
