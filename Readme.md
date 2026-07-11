@@ -7,25 +7,32 @@
 # HermesClaw Zero-Config Sidecar
 
 **PostgreSQL‑backed long‑term memory for Hermes & OpenClaw — with a live Dashboard.**  
-Spin up Docker, open `http://localhost:8010/dashboard`, and your agent instantly remembers across sessions.  
-No API keys, no cloud, no config — just `docker compose up`.
+
+### 🤖 One‑Line Install
+
+Paste this into **Hermes**, **OpenClaw**, or any AI agent:
+
+```text
+Install this project from GitHub:
+https://github.com/SunMe1977/HermesClawZero-ConfigSidecar
+```
+
+**⬆️ The agent clones, configures, and starts everything.** No manual steps.  
+After 30s open → [`http://localhost:8010/dashboard`](http://localhost:8010/dashboard)
 
 ---
 
-## 🚀 10‑Second Demo
+### 🚀 10‑Second Demo
 
 <img src="images/demo-terminal.svg" alt="Terminal demo" width="100%">
 
-**⬆️ That's it.** Watch the terminal above — clone → up → verify → dashboard. All local, all free.
-
+**Manual start** (if you don't have an agent):
 ```bash
 git clone https://github.com/SunMe1977/HermesClawZero-ConfigSidecar.git
 cd HermesClawZero-ConfigSidecar
-docker compose --profile ollama up -d --build
+setup.bat          # Windows   (or: ./setup.sh on Linux)
+start.bat          # Windows   (or: ./start.sh on Linux)
 ```
-
-**Open the Dashboard →** [`http://localhost:8010/dashboard`](http://localhost:8010/dashboard)  
-*(Default login: `admin` / `HermesDash!2026` — change in `.env`)*
 
 ---
 
