@@ -42,7 +42,7 @@ fi
 # ── Step 2: Docker ──
 header "2/5  Checking Docker"
 
-# Docker CLI may be installed but not in PATH (manual install, nonstandard prefix)
+# Docker CLI may be installed but not in PATH
 _DOCKER=""
 for _try in "$(command -v docker)" \
             "/Applications/Docker.app/Contents/Resources/bin/docker" \
@@ -54,52 +54,61 @@ for _try in "$(command -v docker)" \
     fi
 done
 
-if [[ -n "$_DOCKER" ]]; then
-    # Add to PATH if not already there
-    _DIR="$(dirname "$_DOCKER")"
-    if ! command -v docker &>/dev/null; then
-        export PATH="$_DIR:$PATH"
-    fi
-    if docker info &>/dev/null 2>&1; then
-        info "Docker $("$_DOCKER" --version)"
+# Detect macOS version early for Monterey workaround
+_OSVER="$(sw_vers -productVersion 2>/dev/null || echo "0")"
+_IS_MONTEREY=0; [[ "$_OSVER" =~ ^12\. ]] && _IS_MONTEREY=1
+
+if [[ -z "$_DOCKER" ]]; then
+    # ── No Docker CLI at all ──
+    if [[ $_IS_MONTEREY -eq 1 ]]; then
+        warn "Monterey: installing Docker CLI + Colima (no Docker Desktop needed)…"
+        brew install docker docker-compose colima
     else
-        warn "Docker CLI found ($_DOCKER) but Desktop not running — launching…"
-        open -a Docker 2>/dev/null || true
-        for i in $(seq 1 60); do
-            if docker info &>/dev/null 2>&1; then
-                info "Docker Desktop ready"
-                break
+        warn "Docker not found — installing Docker Desktop via Homebrew …"
+        brew install --cask docker
+    fi
+    # Re-check after install
+    for _try in "/usr/local/bin/docker" "/opt/homebrew/bin/docker"; do
+        [[ -x "$_try" ]] && { _DOCKER="$_try"; break; }
+    done
+fi
+
+if [[ -n "$_DOCKER" ]]; then
+    _DIR="$(dirname "$_DOCKER")"
+    ! command -v docker &>/dev/null && export PATH="$_DIR:$PATH"
+    info "Docker CLI found: $("$_DOCKER" --version 2>/dev/null || echo "$_DOCKER")"
+
+    if docker info &>/dev/null 2>&1; then
+        info "Docker daemon running"
+    else
+        if [[ $_IS_MONTEREY -eq 1 ]]; then
+            warn "Monterey: starting Colima (Docker runtime without Docker Desktop)…"
+            if ! command -v colima &>/dev/null; then
+                warn "Installing Colima…"; brew install colima
             fi
-            sleep 2
-        done
+            # Uninstall broken Docker Desktop cask if present
+            if brew list --cask docker &>/dev/null 2>&1; then
+                warn "Removing incompatible Docker Desktop cask…"
+                brew uninstall --cask docker 2>/dev/null || true
+            fi
+            colima start --cpu 2 --memory 4
+            # Wait for daemon
+            for i in $(seq 1 30); do
+                docker info &>/dev/null && { info "Colima ready"; break; }
+                sleep 2
+            done
+        else
+            warn "Launching Docker Desktop…"
+            open -a Docker 2>/dev/null || true
+            for i in $(seq 1 60); do
+                docker info &>/dev/null && { info "Docker Desktop ready"; break; }
+                sleep 2
+            done
+        fi
         if ! docker info &>/dev/null 2>&1; then
-            err "Docker Desktop did not start in time. Launch it manually, then re-run."
+            err "Docker still not running after 120s. Check: colima status (Monterey) or launch Docker Desktop manually."
             exit 1
         fi
-    fi
-else
-    # Docker not found anywhere — try installing
-    if [[ "$(sw_vers -productVersion)" =~ ^12\. ]]; then
-        err "macOS Monterey detected — Docker Desktop latest requires Ventura+."
-        err "Download Docker Desktop 4.12.x (last Monterey-compatible) from:"
-        err "  https://docs.docker.com/desktop/release-notes/#docker-desktop-4-12-0"
-        err "After installing, re-run this script."
-        exit 1
-    fi
-    warn "Docker not found — installing via Homebrew …"
-    brew install --cask docker
-    warn "Starting Docker Desktop…"
-    open -a Docker
-    for i in $(seq 1 60); do
-        if docker info &>/dev/null 2>&1; then
-            info "Docker Desktop ready"
-            break
-        fi
-        sleep 2
-    done
-    if ! docker info &>/dev/null 2>&1; then
-        err "Docker Desktop did not start in time. Launch it manually, then re-run."
-        exit 1
     fi
 fi
 
