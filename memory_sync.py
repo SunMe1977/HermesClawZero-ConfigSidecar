@@ -65,7 +65,7 @@ def import_file(path: pathlib.Path):
 
     resp = None
     try:
-        resp = requests.post(API_URL, params={"key": API_KEY}, json={"text": text}, timeout=30)
+        resp = requests.post(API_URL, headers={"X-API-Key": API_KEY}, json={"text": text}, timeout=30)
         if resp.status_code != 200:
             logger.error("Error %s for %s: %s", resp.status_code, path.name, resp.text)
             LIVENESS["last_error_ts"] = int(time.time())

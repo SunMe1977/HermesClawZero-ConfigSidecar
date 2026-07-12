@@ -101,7 +101,7 @@ def _post_watchdog_status(last_synced_id: int, latest_source_id: int, last_error
     try:
         SESSION.post(
             STATUS_URL,
-            params={"key": API_KEY},
+            headers={"X-API-Key": API_KEY},
             json={
                 "pending": pending,
                 "last_synced_id": int(last_synced_id),
@@ -245,7 +245,7 @@ def sync_messages() -> tuple[bool, int]:
     try:
         resp = SESSION.post(
             BATCH_API_URL,
-            params={"key": API_KEY},
+            headers={"X-API-Key": API_KEY},
             json={
                 "skip_dedupe": True,
                 "items": [

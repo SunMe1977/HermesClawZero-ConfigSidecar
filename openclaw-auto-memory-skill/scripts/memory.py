@@ -83,9 +83,9 @@ class SidecarError(Exception):
 def _api_call(method: str, path: str, **kwargs: Any) -> Any:
     """Make an authenticated request to the HermesClawZero Sidecar API."""
     url = f"{API_BASE}{path}"
-    params = dict(kwargs.pop("params", {}))
-    params.setdefault("key", API_KEY)
-    kwargs["params"] = params
+    headers = dict(kwargs.pop("headers", {}))
+    headers.setdefault("X-API-Key", API_KEY)
+    kwargs["headers"] = headers
     logger.debug("%s %s", method.upper(), url)
     try:
         r = requests.request(method, url, timeout=15, **kwargs)

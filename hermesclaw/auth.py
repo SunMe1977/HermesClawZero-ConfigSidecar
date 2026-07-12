@@ -146,7 +146,8 @@ def get_current_username(
 
 
 def require_api_key(request: Request):
-    key = request.headers.get("x-api-key") or request.query_params.get("key")
+    """Require X-API-Key header. Query-param fallback removed for security (key leaks in logs)."""
+    key = request.headers.get("x-api-key")
     if not key or not API_KEY or not secrets.compare_digest(key, API_KEY):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized"
