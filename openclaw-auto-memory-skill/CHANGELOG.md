@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.2.0 (2026-07-12)
+
+### Added
+- **DB backup prevention** — `content_hash` column for idempotent re-imports
+- **Migration recovery** — `migrations/import_from_hermes_db.py` restores from Hermes state.db
+- **content_hash** — SHA-256 per memory, auto-set on capture, index for fast dedup
+- **Migration SQL** — `001_migrate_old_memories.sql` with full schema + indexes
+
+### Changed
+- Schema: `content_hash TEXT` + `idx_pages_content_hash` created on every API start
+- Memory loss on DB reset is recoverable: run migration script, re-imports idempotently
+
 ## 2.1.0 (2026-07-12)
 
 ### Added
