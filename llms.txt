@@ -1,6 +1,6 @@
 # HermesClawZero-ConfigSidecar
 
-PostgreSQL-backed long-term memory for Hermes & OpenClaw AI agents. Docker-based sidecar with Dashboard, CLI, MCP, and REST API.
+PostgreSQL-backed long-term memory for Hermes & OpenClaw AI agents. Docker-based sidecar with Dashboard, CLI, MCP (20 tools), and REST API. Zero API keys (Ollama local embeddings). Bi-temporal versioning, knowledge graph, episodic memory, auto-import from Hermes sessions.
 
 ## Docs
 - README: https://github.com/SunMe1977/HermesClawZero-ConfigSidecar#readme
@@ -12,15 +12,21 @@ PostgreSQL-backed long-term memory for Hermes & OpenClaw AI agents. Docker-based
 ```
 git clone https://github.com/SunMe1977/HermesClawZero-ConfigSidecar.git
 cd HermesClawZero-ConfigSidecar
-docker compose --profile ollama up -d
+cp .env.example .env
+docker compose --profile ollama up -d --build
 ```
 Dashboard: http://localhost:8010/dashboard
 
 ## Key Features
 - Zero API keys (Ollama embeddings, local-only)
-- Dashboard with memory timeline + search + tenant isolation
-- 6 MCP tools (capture, search, list, stats, delete, review)
+- Dashboard with Memory Galaxy v3 visualization + filter/search
+- Bi-temporal versioning: `/why/{id}`, `/timeline`
+- Knowledge graph: entities, relationships, GraphRAG (`/graph/rag`)
+- Episodic memory: `/episodic/timeline` for events/milestones/decisions
+- 20 MCP tools (capture, search, ask, graph, timeline, optimizer, etc.)
+- MCP auto-discovery via `mcp.json`
 - CLI: `python memory.py capture/search/autosave`
-- REST API: POST /capture, GET /search
-- Auto-update, auto-install for agents
+- GitHub Actions CI: lint + test + docker build on every PR
+- Auto-update, auto-import from Hermes sessions, auto-dedup
 - ClawHub skill: `openclaw skills install @sunme1977/hermesclawzero-auto-memory`
+- pgvector HNSW index, 7 covering indexes, 10K-scale tuning

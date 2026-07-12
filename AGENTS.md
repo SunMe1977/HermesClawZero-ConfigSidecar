@@ -1,59 +1,40 @@
 # HermesClawZero-ConfigSidecar — Agent Guide
 
-Long-term memory sidecar for Hermes & OpenClaw. PostgreSQL + pgvector + Ollama embeddings. Capture, search, and review memories via CLI, API, MCP, or Dashboard.
+Long-term memory sidecar for Hermes/OpenClaw. PostgreSQL + pgvector + Ollama embeddings. Dashboard, CLI, MCP (20 tools), REST API. Bi-temporal versioning, knowledge graph, episodic memory, auto-import.
 
-## Quick Install (agent does it)
-
+## Quick Install
 ```bash
-git clone https://github.com/SunMe1977/HermesClawZero-ConfigSidecar.git
-cd HermesClawZero-ConfigSidecar
-copy .env.example .env
-docker compose --profile ollama up -d --build
+git clone https://github.com/SunMe1977/HermesClawZero-ConfigSidecar.git && cd $_
+cp .env.example .env && docker compose --profile ollama up -d --build
+```
+Verify: `curl http://localhost:8010/healthz` → `{"status":"ok"}`
+
+## CLI (`memory.py`)
+```
+capture "fact" [scope] | search "query" [limit=5] | autosave "text" [filename]
 ```
 
-After 15s: `http://localhost:8010/healthz` → `{"status":"ok"}`
+## API (key via `x-api-key` header or `?key=`)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | /capture | Store memory |
+| GET | /search?query=&days_back= | Hybrid vector+lexical search |
+| GET | /ask?q= | Q&A via vector+graph+LLM |
+| GET | /graph/rag?q= | Graph-augmented retrieval |
+| GET | /why/{id} | Bi-temporal version history |
+| GET | /timeline | Change timeline |
+| GET | /episodic/timeline | Event/milestone timeline |
+| POST | /optimizer/* | Decay, dedup, reflect, tiers |
+| GET | /nudge | Top memories for context |
 
-## CLI (memory.py)
-
-```bash
-python memory.py capture "fact" [scope_id]
-python memory.py search "query" [limit=5]
-python memory.py autosave "text" [filename]
+## MCP (20 tools, auto-discover via `mcp.json`)
 ```
-
-## MCP Server (6 tools)
-
-```bash
-pip install mcp requests
-python mcp_server.py
+hermes mcp add hermesclawzero --command "python mcp_server.py"
 ```
-
-Tools: capture_memory, search_memory, list_recent, memory_stats, delete_memory, review_memories
-
-## API
-
-- `POST /capture` — save memory (json: `{"text":"..."}`)
-- `GET /search?query=...&limit=5` — search memories
-- `GET /healthz` — health check
-- Auth: `x-api-key` header or `?key=` param
-
-## Env
-
-| Key | Default | Description |
-|-----|---------|-------------|
-| `MEM_PUBLIC_URL` | `http://localhost:8010` | API base URL |
-| `API_KEY` | — | Required for protected endpoints |
-| `AI_PROVIDER` | `ollama` | Provider: ollama, openai, gemini, anthropic, openrouter |
-| `OLLAMA_HOST` | `http://host.docker.internal:11434` | Ollama endpoint |
+Tools: capture, search, ask, graph entities/traverse/rag, why, timeline, episodic, nudge, dedup, tiers, reflection, optimize, feedback, merge, update, dashboard_stats.
 
 ## Dashboard
+`http://localhost:8010/dashboard` — Memory Galaxy visualization, search/filter, optimizer controls, health review, export.
 
-`http://localhost:8010/dashboard` — memory timeline, search, tenant isolation, quick capture. Default login: `admin` / `HermesDash!2026`.
-
-## Docker Stack
-
-| Container | Port |
-|-----------|------|
-| `hermesclawzero-configsidecar-api-1` | `:8010` |
-| `gbrain-postgres` | `:5666` |
-| `gbrain-ollama` | `:11435` |
+## Env
+`MEM_PUBLIC_URL` (default :8010) · `API_KEY` (required) · `AI_PROVIDER` (ollama) · `OLLAMA_HOST`
