@@ -41,12 +41,54 @@ fi
 
 # ── Step 2: Docker ──
 header "2/5  Checking Docker"
-if command -v docker &>/dev/null && docker info &>/dev/null 2>&1; then
-    info "Docker $(docker --version)"
+
+# Docker CLI may be installed but not in PATH (manual install, nonstandard prefix)
+_DOCKER=""
+for _try in "$(command -v docker)" \
+            "/Applications/Docker.app/Contents/Resources/bin/docker" \
+            "/usr/local/bin/docker" \
+            "/opt/homebrew/bin/docker"; do
+    if [[ -x "$_try" ]]; then
+        _DOCKER="$_try"
+        break
+    fi
+done
+
+if [[ -n "$_DOCKER" ]]; then
+    # Add to PATH if not already there
+    _DIR="$(dirname "$_DOCKER")"
+    if ! command -v docker &>/dev/null; then
+        export PATH="$_DIR:$PATH"
+    fi
+    if docker info &>/dev/null 2>&1; then
+        info "Docker $("$_DOCKER" --version)"
+    else
+        warn "Docker CLI found ($_DOCKER) but Desktop not running — launching…"
+        open -a Docker 2>/dev/null || true
+        for i in $(seq 1 60); do
+            if docker info &>/dev/null 2>&1; then
+                info "Docker Desktop ready"
+                break
+            fi
+            sleep 2
+        done
+        if ! docker info &>/dev/null 2>&1; then
+            err "Docker Desktop did not start in time. Launch it manually, then re-run."
+            exit 1
+        fi
+    fi
 else
-    warn "Docker Desktop not running — installing via Homebrew …"
+    # Docker not found anywhere — try installing
+    if [[ "$(sw_vers -productVersion)" =~ ^12\. ]]; then
+        err "macOS Monterey detected — Docker Desktop latest requires Ventura+."
+        err "Download Docker Desktop 4.12.x (last Monterey-compatible) from:"
+        err "  https://docs.docker.com/desktop/release-notes/#docker-desktop-4-12-0"
+        err "After installing, re-run this script."
+        exit 1
+    fi
+    warn "Docker not found — installing via Homebrew …"
     brew install --cask docker
-    warn "Starting Docker Desktop (may take a moment)…"
+    warn "Starting Docker Desktop…"
     open -a Docker
     for i in $(seq 1 60); do
         if docker info &>/dev/null 2>&1; then
@@ -56,7 +98,7 @@ else
         sleep 2
     done
     if ! docker info &>/dev/null 2>&1; then
-        err "Docker Desktop did not start in time. Launch it manually, then re-run this script."
+        err "Docker Desktop did not start in time. Launch it manually, then re-run."
         exit 1
     fi
 fi
