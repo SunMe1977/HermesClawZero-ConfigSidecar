@@ -147,6 +147,12 @@ def ensure_phase1_schema() -> None:
             cur.execute("ALTER TABLE pages ADD COLUMN IF NOT EXISTS scope_id TEXT")
             cur.execute("ALTER TABLE pages ADD COLUMN IF NOT EXISTS chat_id TEXT NOT NULL DEFAULT 'global'")
 
+            # ── Engraphis-inspired Ebbinghaus + bi-temporal columns ──
+            cur.execute("ALTER TABLE pages ADD COLUMN IF NOT EXISTS stability REAL NOT NULL DEFAULT 1.0")
+            cur.execute("ALTER TABLE pages ADD COLUMN IF NOT EXISTS last_access TIMESTAMP")
+            cur.execute("ALTER TABLE pages ADD COLUMN IF NOT EXISTS valid_to TIMESTAMP")
+            cur.execute("ALTER TABLE pages ADD COLUMN IF NOT EXISTS superseded_by INT")
+
             cur.execute(
                 """
                 CREATE TABLE IF NOT EXISTS pages_archive (
@@ -265,6 +271,21 @@ def ensure_phase1_schema() -> None:
                     logger.warning("[SCHEMA] Could not create vector index — pgvector may need upgrade")
 
             conn.commit()
+
+    # ── 10K-scale covering indexes ──
+    with connect_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_pages_dash ON pages(scope_id, is_archived, created_at DESC) WHERE is_archived = FALSE")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_pages_type ON pages(memory_type, is_archived) WHERE is_archived = FALSE")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_pages_tier_scope ON pages(memory_tier, scope_id) WHERE is_archived = FALSE")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_pages_decay ON pages(last_used, confidence, is_archived) WHERE is_archived = FALSE")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_pages_tenant ON pages(chat_id, scope_id, is_archived) WHERE is_archived = FALSE")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_pages_freq ON pages(frequency DESC) WHERE is_archived = FALSE")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_em_entity_page ON entity_mentions(entity_id, page_id)")
+            # ── 10K-scale: Nudge composite index ──
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_pages_nudge ON pages(importance DESC, frequency DESC, last_used DESC) WHERE is_archived = FALSE")
+            conn.commit()
+            logger.info("[SCHEMA] 10K-scale covering indexes created")
 
     from hermesclaw.embeddings import infer_embedding_dimension
     ensure_embeddings_schema(infer_embedding_dimension())

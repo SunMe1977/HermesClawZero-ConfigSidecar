@@ -464,13 +464,23 @@
     </div>
   </div>
 
-  <div style="margin:20px 0;">
-    {% if total_pages > 1 %}
-    {% for i in range(1, total_pages + 1) %}
-    <a href="/dashboard?page={{ i }}&query={{ query }}&selected_scope={{ active_scope }}&health_stale_days={{ safe_health_stale_days }}&health_confidence_threshold={{ "%.2f"|format(safe_health_confidence) }}&health_limit={{ safe_health_limit }}"
-       class="pagination {{ 'active' if i == page else 'inactive' }}">{{ i }}</a>
-    {% endfor %}
-    {% endif %}
+  <div style="margin:20px 0; display:flex; align-items:center; justify-content:space-between; gap:12px; font-size:13px;">
+    <div>
+      {% if before_id %}
+      <a href="/dashboard?query={{ query }}&selected_scope={{ active_scope }}&health_stale_days={{ safe_health_stale_days }}&health_confidence_threshold={{ "%.2f"|format(safe_health_confidence) }}&health_limit={{ safe_health_limit }}{% if next_cursor_id %}&before_id={{ next_cursor_id }}{% endif %}"
+         class="btn btn-sm btn-ghost" style="text-decoration:none;">‹ Previous (newest)</a>
+      {% endif %}
+    </div>
+    <div style="color:var(--text-muted);">
+      {{ total_items }} memories
+      {% if rows %}(#{{ rows[-1][0] }} – #{{ rows[0][0] }}){% endif %}
+    </div>
+    <div>
+      {% if has_next and rows %}
+      <a href="/dashboard?query={{ query }}&selected_scope={{ active_scope }}&health_stale_days={{ safe_health_stale_days }}&health_confidence_threshold={{ "%.2f"|format(safe_health_confidence) }}&health_limit={{ safe_health_limit }}&before_id={{ rows[-1][0] }}"
+         class="btn btn-sm btn-ghost" style="text-decoration:none;">Next (older) ›</a>
+      {% endif %}
+    </div>
   </div>
 
   <div style="margin:8px 0; display:flex; align-items:center; gap:12px;">
@@ -521,13 +531,23 @@
     </div>
   </div>
 
-  <div class="pagination-wrap">
-    {% if total_pages > 1 %}
-    {% for i in range(1, total_pages + 1) %}
-    <a href="/dashboard?page={{ i }}&query={{ query }}&selected_scope={{ active_scope }}&health_stale_days={{ safe_health_stale_days }}&health_confidence_threshold={{ "%.2f"|format(safe_health_confidence) }}&health_limit={{ safe_health_limit }}"
-       class="{{ 'active' if i == page else '' }}">{{ i }}</a>
-    {% endfor %}
-    {% endif %}
+  <div class="pagination-wrap" style="display:flex; align-items:center; justify-content:space-between; gap:12px; font-size:13px;">
+    <div>
+      {% if before_id %}
+      <a href="/dashboard?query={{ query }}&selected_scope={{ active_scope }}&health_stale_days={{ safe_health_stale_days }}&health_confidence_threshold={{ "%.2f"|format(safe_health_confidence) }}&health_limit={{ safe_health_limit }}{% if next_cursor_id %}&before_id={{ next_cursor_id }}{% endif %}"
+         class="btn btn-sm btn-ghost" style="text-decoration:none;">‹ Previous (newest)</a>
+      {% endif %}
+    </div>
+    <div style="color:var(--text-muted);">
+      {{ total_items }} memories
+      {% if rows %}(#{{ rows[-1][0] }} – #{{ rows[0][0] }}){% endif %}
+    </div>
+    <div>
+      {% if has_next and rows %}
+      <a href="/dashboard?query={{ query }}&selected_scope={{ active_scope }}&health_stale_days={{ safe_health_stale_days }}&health_confidence_threshold={{ "%.2f"|format(safe_health_confidence) }}&health_limit={{ safe_health_limit }}&before_id={{ rows[-1][0] }}"
+         class="btn btn-sm btn-ghost" style="text-decoration:none;">Next (older) ›</a>
+      {% endif %}
+    </div>
   </div>
 
 </div>

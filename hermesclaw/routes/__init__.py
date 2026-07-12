@@ -35,6 +35,7 @@ from hermesclaw.reflection import analyze_memories
 from hermesclaw.episodic import ensure_episodic_schema, record_episode, get_timeline
 from hermesclaw.update import get_update_status, run_update, get_version_info
 from hermesclaw.ask import ask_question
+from hermesclaw.export import export_memories
 
 logger = logging.getLogger("hermesclaw.routes")
 
@@ -190,15 +191,16 @@ async def delete_page(page_id: int = Form(...)):
 
 
 @router.get("/export", dependencies=[Depends(get_current_username)])
-async def export_data():
-    def _export_sync():
-        with connect_db() as conn:
-            with conn.cursor() as cur:
-                cur.execute("SELECT id, content FROM pages")
-                rows = cur.fetchall()
-        return [{"id": r[0], "content": r[1]} for r in rows]
-
-    return await run_in_threadpool(_export_sync)
+async def export_data(format: str = "json", scope_id: str | None = None,
+                      include_archived: bool = False, include_graph: bool = False):
+    """Export all memories as JSON (default) or Markdown. Supports scope filter, graph entities."""
+    from fastapi.responses import JSONResponse, PlainTextResponse
+    result = await run_in_threadpool(lambda: export_memories(
+        format=format, scope_id=scope_id, include_archived=include_archived, include_graph=include_graph))
+    if format == "markdown":
+        return PlainTextResponse(result, media_type="text/markdown",
+                                 headers={"Content-Disposition": "attachment; filename=hermesclaw-export.md"})
+    return JSONResponse(result, headers={"Content-Disposition": "attachment; filename=hermesclaw-export.json"})
 
 
 @router.post("/tag_auto/{page_id}", dependencies=[Depends(get_current_username)])
@@ -250,7 +252,7 @@ async def view_page_html(page_id: int):
 async def dashboard(
     query: str | None = None,
     selected_scope: str = DASHBOARD_SCOPE_ALL,
-    page: int = 1,
+    before_id: int | None = None,
     memory_type: str | None = None,
     days_back: int | None = None,
     optimizer_msg: str | None = None,
@@ -261,7 +263,6 @@ async def dashboard(
     health_limit: int = 8,
 ):
     per_page = 20
-    offset = (page - 1) * per_page
     safe_health_stale_days = max(1, min(health_stale_days, 3650))
     safe_health_confidence = clamp(health_confidence_threshold, 0.0, 1.0)
     safe_health_limit = max(1, min(health_limit, 50))
@@ -308,8 +309,8 @@ async def dashboard(
 
                 if query:
                     cur.execute(
-                        f"SELECT id, content FROM pages WHERE content ILIKE %s{list_scope_clause} ORDER BY id DESC LIMIT %s OFFSET %s",
-                        [f"%{query}%"] + list_scope_params + [per_page, offset],
+                        f"SELECT id, content FROM pages WHERE content ILIKE %s{list_scope_clause} {'AND id < %s' if before_id else ''} ORDER BY id DESC LIMIT %s",
+                        [f"%{query}%"] + list_scope_params + ([before_id] if before_id else []) + [per_page + 1],
                     )
                     rows = cur.fetchall()
                     cur.execute(
@@ -319,8 +320,8 @@ async def dashboard(
                     total_items = cur.fetchone()[0]
                 else:
                     cur.execute(
-                        f"SELECT id, content FROM pages WHERE 1=1{list_scope_clause} ORDER BY id DESC LIMIT %s OFFSET %s",
-                        list_scope_params + [per_page, offset],
+                        f"SELECT id, content FROM pages WHERE 1=1{list_scope_clause} {'AND id < %s' if before_id else ''} ORDER BY id DESC LIMIT %s",
+                        list_scope_params + ([before_id] if before_id else []) + [per_page + 1],
                     )
                     rows = cur.fetchall()
                     cur.execute(
@@ -328,6 +329,13 @@ async def dashboard(
                         list_scope_params,
                     )
                     total_items = cur.fetchone()[0]
+
+        # ── Keyset cursor: fetch per_page+1, detect overflow ──
+        has_next = len(rows) > per_page
+        if has_next:
+            rows = rows[:per_page]
+        next_cursor_id = rows[-1][0] if rows else None
+        prev_cursor_id = before_id  # used to construct "previous page" link
     except Exception as ex:
         return HTMLResponse(
             f"""
@@ -355,8 +363,6 @@ async def dashboard(
         age_seconds = max(0, int(time.time()) - int(WATCHDOG_STATUS["updated_at"]))
         watchdog_updated_text = f"{age_seconds}s ago"
 
-    total_pages = math.ceil(total_items / per_page)
-
     scope_options = [
         (DASHBOARD_SCOPE_ALL, "All users/scopes"),
         (DASHBOARD_SCOPE_UNSCOPED, "Unscoped (legacy rows)"),
@@ -368,7 +374,7 @@ async def dashboard(
         scope_options.append((active_scope, f"{format_scope_label(active_scope)} (selected)"))
 
     # Galaxy view data
-    galaxy_tenants = [
+    galaxy_tenants_list = [
         {"name": format_scope_label(str(sid)), "count": int(c), "scope": str(sid)}
         for sid, c in scope_rows[:10]
     ]
@@ -395,7 +401,7 @@ async def dashboard(
 
     return _jinja_env.get_template("dashboard.html").render(
         total_items=total_items,
-        galaxy_tenants=galaxy_tenants,
+        galaxy_tenants=galaxy_tenants_list,
         galaxy_high_conf=galaxy_high_conf,
         galaxy_med_conf=galaxy_med_conf,
         galaxy_low_conf=galaxy_low_conf,
@@ -427,8 +433,10 @@ async def dashboard(
         safe_health_stale_days=safe_health_stale_days,
         safe_health_confidence=safe_health_confidence,
         safe_health_limit=safe_health_limit,
-        page=page,
-        total_pages=total_pages,
+        before_id=before_id,
+        next_cursor_id=next_cursor_id,
+        prev_cursor_id=prev_cursor_id,
+        has_next=has_next,
         rows=rows,
         review=review,
         dry_run=dry_run,

@@ -13,6 +13,17 @@ services:
       POSTGRES_DB: gbrain
     volumes:
       - pgdata:/var/lib/postgresql/data
+    command: >
+      -c shared_buffers=1GB
+      -c work_mem=64MB
+      -c effective_cache_size=4GB
+      -c maintenance_work_mem=512MB
+      -c random_page_cost=1.1
+      -c max_parallel_workers_per_gather=4
+      -c effective_io_concurrency=200
+      -c wal_buffers=16MB
+      -c min_wal_size=1GB
+      -c max_wal_size=4GB
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d gbrain"]
       interval: 10s

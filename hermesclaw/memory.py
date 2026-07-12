@@ -2,6 +2,7 @@
 
 import json
 import logging
+import math
 import ollama
 from fastapi import HTTPException
 from hermesclaw.config import OLLAMA_HOST, OPENROUTER_DEGRADED_MESSAGE
@@ -9,7 +10,8 @@ from hermesclaw.db import connect_db, embedding_to_pgvector_literal
 from hermesclaw.embeddings import generate_embedding, generate_embeddings
 from hermesclaw.scoring import (
     score_memory, normalize_scope_id, normalize_chat_id,
-    derive_chat_id, compute_hybrid_score,
+    derive_chat_id, compute_hybrid_score, resolve, stability_with_boost,
+    ResolutionOp, INTERACTION_BOOST,
 )
 from hermesclaw.graph import process_memory_for_graph
 from hermesclaw.consolidation import store_compressed_version
@@ -69,52 +71,132 @@ def _capture_sync(
 
     capture_text = capture_text.strip()
     meta = score_memory(capture_text)
-    similar = find_similar_page(capture_text, scope_id=capture_scope_id, chat_id=capture_chat_id)
-    if similar:
+    initial_stability = {"fact": 2.0, "preference": 1.5, "project": 3.0, "skill": 2.5, "conversation": 1.0}.get(
+        meta["memory_type"], 1.0
+    )
+
+    # ── Conflict Resolver: fetch nearest neighbors, decide ADD/NOOP/INVALIDATE ──
+    emb = None
+    try:
+        emb = generate_embedding(capture_text)
+    except HTTPException:
+        pass  # degraded path — skip resolver, always ADD
+
+    if emb is not None:
+        neighbors = []
+        emb_str = embedding_to_pgvector_literal(emb)
         with connect_db() as conn:
             with conn.cursor() as cur:
+                cur.execute("SET hnsw.ef_search = 200")
                 cur.execute(
                     """
-                    UPDATE pages
-                    SET frequency = frequency + 1,
-                        confidence = LEAST(1.0, confidence + 0.01),
-                        last_used = NOW(),
-                        updated_at = NOW()
-                    WHERE id = %s
+                    SELECT p.id, p.content, p.memory_type, p.importance, p.confidence, p.frequency,
+                           e.embedding <=> %s::vector AS dist
+                    FROM embeddings e
+                    JOIN pages p ON p.id = e.page_id
+                    WHERE p.is_archived = FALSE
+                      AND p.chat_id = %s
+                      AND (%s::text IS NULL OR p.scope_id = %s::text)
+                      AND p.valid_to IS NULL
+                    ORDER BY dist
+                    LIMIT 5
                     """,
-                    (similar["id"],),
+                    (emb_str, derive_chat_id(chat_id, capture_scope_id),
+                     capture_scope_id, capture_scope_id),
                 )
-                conn.commit()
-        return {
-            "status": "duplicate",
-            "page_id": similar["id"],
-            "distance": similar["distance"],
-            "content": similar["content"],
-            "memory_type": meta["memory_type"],
-            "score": meta["score"],
-        }
+                for row in cur.fetchall():
+                    sim = 1.0 / (1.0 + float(row[6]))
+                    neighbors.append((sim, {"id": row[0], "content": row[1]}))
 
+        if neighbors:
+            op, target_id, reason = resolve(capture_text, neighbors)
+
+            if op == ResolutionOp.NOOP:
+                # Reinforce existing memory
+                with connect_db() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            """UPDATE pages
+                               SET frequency = frequency + 1,
+                                   confidence = LEAST(1.0, confidence + 0.02),
+                                   stability = %s,
+                                   last_used = NOW(),
+                                   last_access = NOW(),
+                                   updated_at = NOW()
+                               WHERE id = %s""",
+                            (stability_with_boost(1.0, 1, "reinforce"), target_id),
+                        )
+                        conn.commit()
+                return {
+                    "status": "duplicate",
+                    "page_id": target_id,
+                    "reason": reason,
+                    "score": meta["score"],
+                }
+
+            if op == ResolutionOp.INVALIDATE:
+                # Close old fact, then insert new as superseding
+                with connect_db() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            """INSERT INTO pages (
+                                content, memory_type, importance, confidence, frequency,
+                                sentiment, source, ttl_days, scope_id, chat_id,
+                                stability, last_access, updated_at, last_used
+                            ) VALUES (%s, %s, %s, %s, 1, %s, %s, %s, %s, %s, %s, NOW(), NOW(), NOW())
+                            RETURNING id""",
+                            (
+                                capture_text, meta["memory_type"],
+                                meta["importance"], meta["confidence"],
+                                meta["sentiment"], meta["source"], meta["ttl_days"],
+                                capture_scope_id, derive_chat_id(chat_id, capture_scope_id),
+                                initial_stability,
+                            ),
+                        )
+                        new_id = cur.fetchone()[0]
+                        cur.execute(
+                            """UPDATE pages SET valid_to = NOW(), superseded_by = %s
+                               WHERE id = %s""",
+                            (new_id, target_id),
+                        )
+                        conn.commit()
+                page_id = new_id
+                # Still store the embedding below
+                try:
+                    emb_str = embedding_to_pgvector_literal(emb)
+                    with connect_db() as conn:
+                        with conn.cursor() as cur:
+                            cur.execute(
+                                "INSERT INTO embeddings (page_id, embedding) VALUES (%s, %s::vector)",
+                                (page_id, emb_str),
+                            )
+                            conn.commit()
+                except Exception:
+                    pass
+                return {
+                    "status": "superseded",
+                    "page_id": page_id,
+                    "supersedes": target_id,
+                    "reason": reason,
+                    "score": meta["score"],
+                }
+
+    # ── ADD: insert new memory with initial stability ──
     with connect_db() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                """
-                INSERT INTO pages (
+                """INSERT INTO pages (
                     content, memory_type, importance, confidence, frequency,
-                    sentiment, source, ttl_days, scope_id, chat_id, updated_at, last_used
-                )
-                VALUES (%s, %s, %s, %s, 1, %s, %s, %s, %s, %s, NOW(), NOW())
-                RETURNING id
-                """,
+                    sentiment, source, ttl_days, scope_id, chat_id,
+                    stability, last_access, updated_at, last_used
+                ) VALUES (%s, %s, %s, %s, 1, %s, %s, %s, %s, %s, %s, NOW(), NOW(), NOW())
+                RETURNING id""",
                 (
-                    capture_text,
-                    meta["memory_type"],
-                    meta["importance"],
-                    meta["confidence"],
-                    meta["sentiment"],
-                    meta["source"],
-                    meta["ttl_days"],
-                    capture_scope_id,
-                    capture_chat_id,
+                    capture_text, meta["memory_type"],
+                    meta["importance"], meta["confidence"],
+                    meta["sentiment"], meta["source"], meta["ttl_days"],
+                    capture_scope_id, derive_chat_id(chat_id, capture_scope_id),
+                    initial_stability,
                 ),
             )
             page_id = cur.fetchone()[0]
@@ -359,6 +441,9 @@ def _search_sync(
     if days_back is not None and days_back > 0:
         days_filter = f" AND COALESCE(p.last_used, p.created_at) >= NOW() - INTERVAL '{days_back} days'"
 
+    # ── HNSW ef_search per query type ──
+    ef_search = {"exact": 400, "high_recall": 200, "hybrid": 80, "vector": 40}.get(search_type, 80)
+
     if query.strip() == "":
         with connect_db() as conn:
             with conn.cursor() as cur:
@@ -414,119 +499,208 @@ def _search_sync(
         else:
             raise
 
-    candidates = {}
-
+    # ── Phase D: SQL-hybrid-score search (CTE + inline score + Ebbinghaus retention) ──
+    rows = []
     with connect_db() as conn:
         with conn.cursor() as cur:
-            vector_rows = []
-            if qemb_str is not None:
+            if qemb_str is None:
                 cur.execute(
                     f"""
                     SELECT p.id, p.content, p.memory_type, p.importance, p.confidence, p.frequency,
+                           p.stability,
+                           EXTRACT(EPOCH FROM (NOW() - COALESCE(p.last_access, p.last_used, p.created_at))) / 86400.0 AS access_age_days,
                            EXTRACT(EPOCH FROM (NOW() - COALESCE(p.last_retrieved, p.last_used, p.created_at))) / 86400.0 AS age_days,
-                           e.embedding <-> %s::vector AS vector_distance
-                    FROM embeddings e
-                    JOIN pages p ON p.id = e.page_id
+                           NULL::float8 AS vec_dist,
+                           ts_rank_cd(to_tsvector('english', p.content), plainto_tsquery('english', %s)) AS lex_rank,
+                           COALESCE(exp(-EXTRACT(EPOCH FROM (NOW() - COALESCE(p.last_access, p.last_used, p.created_at))) / 86400.0 / GREATEST(p.stability, 0.01)), 0.0) AS retention,
+                           (0.15 * COALESCE(ts_rank_cd(to_tsvector('english', p.content), plainto_tsquery('english', %s)) / (ts_rank_cd(to_tsvector('english', p.content), plainto_tsquery('english', %s)) + 1.0), 0.0)
+                            + 0.15 * COALESCE(exp(-EXTRACT(EPOCH FROM (NOW() - COALESCE(p.last_access, p.last_used, p.created_at))) / 86400.0 / GREATEST(p.stability, 0.01)), 0.0)
+                            + 0.12 * p.importance
+                            + 0.10 * COALESCE(exp(-GREATEST(0.0, EXTRACT(EPOCH FROM (NOW() - COALESCE(p.last_retrieved, p.last_used, p.created_at))) / 86400.0) / 30.0), 0.5)
+                            + 0.08 * COALESCE(log(1.0 + LEAST(p.frequency::numeric, 1000)) / log(101), 0.0))
+                           * (0.5 + 0.5 * p.confidence) AS hybrid_score
+                    FROM pages p
                     WHERE p.is_archived = FALSE
                       AND p.chat_id = %s
                       AND (%s::text IS NULL OR p.scope_id = %s::text)
                       {days_filter}
-                    ORDER BY vector_distance
+                      AND to_tsvector('english', p.content) @@ plainto_tsquery('english', %s)
+                    ORDER BY hybrid_score DESC
                     LIMIT %s
                     """,
-                    (qemb_str, search_chat_id, search_scope_id, search_scope_id, *days_params, limit * 2),
+                    (query, query, query, search_chat_id, search_scope_id, search_scope_id, query, limit * 2),
                 )
-                vector_rows = cur.fetchall()
+            else:
+                cur.execute(f"SET hnsw.ef_search = {ef_search}")
+                cur.execute(
+                    f"""
+                    WITH vector_hits AS (
+                        SELECT p.id, p.content, p.memory_type, p.importance, p.confidence, p.frequency,
+                               p.stability,
+                               EXTRACT(EPOCH FROM (NOW() - COALESCE(p.last_access, p.last_used, p.created_at))) / 86400.0 AS access_age_days,
+                               EXTRACT(EPOCH FROM (NOW() - COALESCE(p.last_retrieved, p.last_used, p.created_at))) / 86400.0 AS age_days,
+                               e.embedding <-> %s::vector AS vec_dist,
+                               NULL::float8 AS lex_rank,
+                               COALESCE(exp(-EXTRACT(EPOCH FROM (NOW() - COALESCE(p.last_access, p.last_used, p.created_at))) / 86400.0 / GREATEST(p.stability, 0.01)), 0.0) AS retention
+                        FROM embeddings e
+                        JOIN pages p ON p.id = e.page_id
+                        WHERE p.is_archived = FALSE
+                          AND p.chat_id = %s
+                          AND (%s::text IS NULL OR p.scope_id = %s::text)
+                          {days_filter}
+                        ORDER BY vec_dist
+                        LIMIT %s
+                    ),
+                    lexical_hits AS (
+                        SELECT p.id, p.content, p.memory_type, p.importance, p.confidence, p.frequency,
+                               p.stability,
+                               EXTRACT(EPOCH FROM (NOW() - COALESCE(p.last_access, p.last_used, p.created_at))) / 86400.0 AS access_age_days,
+                               EXTRACT(EPOCH FROM (NOW() - COALESCE(p.last_retrieved, p.last_used, p.created_at))) / 86400.0 AS age_days,
+                               NULL::float8 AS vec_dist,
+                               ts_rank_cd(to_tsvector('english', p.content), plainto_tsquery('english', %s)) AS lex_rank,
+                               COALESCE(exp(-EXTRACT(EPOCH FROM (NOW() - COALESCE(p.last_access, p.last_used, p.created_at))) / 86400.0 / GREATEST(p.stability, 0.01)), 0.0) AS retention
+                        FROM pages p
+                        WHERE p.is_archived = FALSE
+                          AND p.chat_id = %s
+                          AND (%s::text IS NULL OR p.scope_id = %s::text)
+                          {days_filter}
+                          AND to_tsvector('english', p.content) @@ plainto_tsquery('english', %s)
+                        ORDER BY lex_rank DESC
+                        LIMIT %s
+                    ),
+                    combined AS (
+                        SELECT * FROM vector_hits
+                        UNION ALL
+                        SELECT v.* FROM lexical_hits v
+                        WHERE NOT EXISTS (SELECT 1 FROM vector_hits vv WHERE vv.id = v.id)
+                    )
+                    SELECT id, content, memory_type, importance, confidence, frequency, stability,
+                           access_age_days, age_days, vec_dist, lex_rank, retention,
+                           (0.30 * COALESCE(1.0 / (1.0 + vec_dist), 0.0)
+                            + 0.15 * COALESCE(lex_rank / (lex_rank + 1.0), 0.0)
+                            + 0.15 * retention
+                            + 0.12 * importance
+                            + 0.10 * COALESCE(exp(-GREATEST(0.0, age_days) / 30.0), 0.5)
+                            + 0.08 * COALESCE(log(1.0 + LEAST(frequency::numeric, 1000)) / log(101), 0.0))
+                           * (0.5 + 0.5 * confidence) AS hybrid_score
+                    FROM combined
+                    ORDER BY hybrid_score DESC
+                    LIMIT %s
+                    """,
+                    (
+                        qemb_str, search_chat_id, search_scope_id, search_scope_id,
+                        *days_params, limit * 2,
+                        query, search_chat_id, search_scope_id, search_scope_id,
+                        query, limit * 2,
+                        limit,
+                    ),
+                )
+            rows = cur.fetchall()
 
-            cur.execute(
-                f"""
-                SELECT p.id, p.content, p.memory_type, p.importance, p.confidence, p.frequency,
-                       EXTRACT(EPOCH FROM (NOW() - COALESCE(p.last_retrieved, p.last_used, p.created_at))) / 86400.0 AS age_days,
-                       ts_rank_cd(to_tsvector('english', p.content), plainto_tsquery('english', %s)) AS lexical_rank
-                FROM pages p
-                WHERE p.is_archived = FALSE
-                    AND p.chat_id = %s
-                    AND (%s::text IS NULL OR p.scope_id = %s::text)
-                    {days_filter}
-                  AND to_tsvector('english', p.content) @@ plainto_tsquery('english', %s)
-                ORDER BY lexical_rank DESC
-                LIMIT %s
-                """,
-                (query, search_chat_id, search_scope_id, search_scope_id, query, limit * 2),
-            )
-            lexical_rows = cur.fetchall()
-
-    for r in vector_rows:
-        candidates[r[0]] = {
-            "id": r[0],
-            "content": r[1],
-            "memory_type": r[2],
-            "importance": r[3],
-            "confidence": r[4],
-            "frequency": r[5],
-            "age_days": float(r[6] or 0.0),
-            "vector_distance": float(r[7]) if r[7] is not None else None,
-            "lexical_rank": None,
-        }
-
-    for r in lexical_rows:
-        existing = candidates.get(r[0])
-        row_dict = {
-            "id": r[0],
-            "content": r[1],
-            "memory_type": r[2],
-            "importance": r[3],
-            "confidence": r[4],
-            "frequency": r[5],
-            "age_days": float(r[6] or 0.0),
-            "vector_distance": existing.get("vector_distance") if existing else None,
-            "lexical_rank": float(r[7]) if r[7] is not None else None,
-        }
-        if existing:
-            existing["lexical_rank"] = float(r[7]) if r[7] is not None else None
-        else:
-            candidates[r[0]] = row_dict
-
+    # Reconstruct explainability from SQL results (with Ebbinghaus retention)
     results = []
-    for item in candidates.values():
-        score, explain = compute_hybrid_score(item)
-        item["hybrid_score"] = score
-        item["explainability"] = explain
-        results.append(item)
+    for r in rows:
+        stability_val = float(r[6] or 1.0)
+        access_age_days = float(r[7] or 0.0)
+        age_days = float(r[8] or 0.0)
+        vec_dist = float(r[9]) if r[9] is not None else None
+        lex_rank_val = float(r[10]) if r[10] is not None else None
+        retention_val = float(r[11]) if r[11] is not None else 1.0
+        importance = float(r[3] or 0.5)
+        confidence = float(r[4] or 0.5)
+        frequency = int(r[5] or 1)
 
-    results.sort(key=lambda x: x["hybrid_score"], reverse=True)
+        vec_norm = 1.0 / (1.0 + vec_dist) if vec_dist is not None else 0.0
+        lex_norm = lex_rank_val / (lex_rank_val + 1.0) if lex_rank_val is not None else 0.0
+        recency_norm = math.exp(-max(0.0, age_days) / 30.0)
+        freq_norm = math.log10(1 + min(frequency, 1000)) / math.log10(101)
+        staleness_norm = 0.0  # not fetched in search; future: valid_to check
+
+        explain = {
+            "components": {
+                "vector": round(vec_norm, 4),
+                "lexical": round(lex_norm, 4),
+                "retention": round(retention_val, 4),
+                "importance": round(importance, 4),
+                "confidence": round(confidence, 4),
+                "recency": round(recency_norm, 4),
+                "frequency": round(freq_norm, 4),
+                "staleness": round(staleness_norm, 4),
+            },
+            "weights": {
+                "vector": 0.30,
+                "lexical": 0.15,
+                "retention": 0.15,
+                "importance": 0.12,
+                "recency": 0.10,
+                "frequency": 0.08,
+                "staleness_penalty": -0.10,
+            },
+        }
+        reasons = []
+        if lex_norm >= 0.35:
+            reasons.append("strong keyword overlap")
+        if vec_norm >= 0.6:
+            reasons.append("high semantic similarity")
+        if retention_val >= 0.7:
+            reasons.append("fresh in memory (Ebbinghaus)")
+        if importance >= 0.75:
+            reasons.append("high importance memory")
+        if recency_norm >= 0.6:
+            reasons.append("recently used")
+        if freq_norm >= 0.5:
+            reasons.append("frequently retrieved")
+        explain["reasons"] = reasons or ["balanced hybrid match"]
+        explain["final_score"] = float(r[12]) if len(r) > 12 else 0.0
+
+        results.append({
+            "id": r[0],
+            "content": r[1],
+            "memory_type": r[2],
+            "importance": importance,
+            "confidence": confidence,
+            "frequency": frequency,
+            "stability": stability_val,
+            "retention": retention_val,
+            "hybrid_score": float(r[12]) if len(r) > 12 else 0.0,
+            "vector_distance": vec_dist,
+            "lexical_rank": lex_rank_val,
+            "age_days": round(age_days, 2),
+            "explainability": explain,
+        })
 
     if rerank_results:
         results = rerank(query, results)
 
-    ids = [r["id"] for r in results[:limit]]
+    ids = [row["id"] for row in results[:limit]]
     if ids:
         with connect_db() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "UPDATE pages SET last_retrieved = NOW(), frequency = frequency + 1 WHERE id = ANY(%s)",
-                    (ids,),
+                    """UPDATE pages
+                       SET last_retrieved = NOW(), last_access = NOW(),
+                           frequency = frequency + 1,
+                           stability = GREATEST(stability, %s)
+                       WHERE id = ANY(%s)""",
+                    (stability_with_boost(1.0, 1, "retrieve"), ids),
                 )
                 conn.commit()
 
-    return [
-        {
-            "id": r["id"],
-            "content": r["content"],
-            "memory_type": r["memory_type"],
-            "importance": r["importance"],
-            "confidence": r["confidence"],
-            "frequency": r["frequency"],
-            "hybrid_score": r["hybrid_score"],
-            "vector_distance": r.get("vector_distance"),
-            "lexical_rank": r.get("lexical_rank"),
-            "age_days": round(float(r.get("age_days") or 0.0), 2),
-            "explainability": r["explainability"],
-            "degraded": degraded_search,
-            "degraded_reason": degraded_reason,
-        }
-        for r in results[:limit]
-    ]
+    return [{
+        "id": r["id"],
+        "content": r["content"],
+        "memory_type": r["memory_type"],
+        "importance": r["importance"],
+        "confidence": r["confidence"],
+        "frequency": r["frequency"],
+        "hybrid_score": r["hybrid_score"],
+        "vector_distance": r.get("vector_distance"),
+        "lexical_rank": r.get("lexical_rank"),
+        "age_days": round(float(r.get("age_days") or 0.0), 2),
+        "explainability": r["explainability"],
+        "degraded": degraded_search,
+        "degraded_reason": degraded_reason,
+    } for r in results[:limit]]
 
 
 def rerank(query: str, items: list[dict]) -> list[dict]:

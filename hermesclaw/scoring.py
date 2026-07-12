@@ -168,19 +168,24 @@ def normalize_recency(age_days: float | None) -> float:
 
 
 def compute_hybrid_score(item: dict) -> tuple[float, dict]:
+    """Seven-term hybrid score: vector + lexical + retention + importance + recency + frequency + staleness."""
     vector_component = normalize_vector_distance(item.get("vector_distance"))
     lexical_component = normalize_lexical_rank(item.get("lexical_rank"))
     importance_component = clamp(float(item.get("importance") or 0.5))
     confidence_component = clamp(float(item.get("confidence") or 0.5))
     recency_component = normalize_recency(item.get("age_days"))
     frequency_component = normalize_frequency(item.get("frequency"))
+    retention_component = clamp(item.get("retention") or 1.0)
+    staleness_component = clamp(item.get("staleness_penalty") or 0.0)
 
     base_score = (
-        0.45 * vector_component
-        + 0.25 * lexical_component
-        + 0.15 * importance_component
+        0.30 * vector_component
+        + 0.15 * lexical_component
+        + 0.15 * retention_component
+        + 0.12 * importance_component
         + 0.10 * recency_component
-        + 0.05 * frequency_component
+        + 0.08 * frequency_component
+        - 0.10 * staleness_component
     )
     final_score = round(base_score * (0.5 + 0.5 * confidence_component), 6)
 
@@ -188,17 +193,21 @@ def compute_hybrid_score(item: dict) -> tuple[float, dict]:
         "components": {
             "vector": round(vector_component, 4),
             "lexical": round(lexical_component, 4),
+            "retention": round(retention_component, 4),
             "importance": round(importance_component, 4),
             "confidence": round(confidence_component, 4),
             "recency": round(recency_component, 4),
             "frequency": round(frequency_component, 4),
+            "staleness": round(staleness_component, 4),
         },
         "weights": {
-            "vector": 0.45,
-            "lexical": 0.25,
-            "importance": 0.15,
+            "vector": 0.30,
+            "lexical": 0.15,
+            "retention": 0.15,
+            "importance": 0.12,
             "recency": 0.10,
-            "frequency": 0.05,
+            "frequency": 0.08,
+            "staleness_penalty": -0.10,
         },
     }
 
@@ -207,6 +216,8 @@ def compute_hybrid_score(item: dict) -> tuple[float, dict]:
         reasons.append("strong keyword overlap")
     if vector_component >= 0.6:
         reasons.append("high semantic similarity")
+    if retention_component >= 0.7:
+        reasons.append("fresh in memory (Ebbinghaus)")
     if importance_component >= 0.75:
         reasons.append("high importance memory")
     if recency_component >= 0.6:
@@ -217,3 +228,128 @@ def compute_hybrid_score(item: dict) -> tuple[float, dict]:
     explain["reasons"] = reasons or ["balanced hybrid match"]
     explain["final_score"] = final_score
     return final_score, explain
+
+
+# ---------------------------------------------------------------------------
+# Ebbinghaus forgetting-curve — stability, retention, reinforcement
+# ---------------------------------------------------------------------------
+_ALPHA = 0.3  # stability growth rate (spacing effect)
+_STABILITY_FLOOR = 0.5
+
+
+def retention_score(stability: float, last_access: float | None, now: float | None = None) -> float:
+    """Ebbinghaus R(t) = exp(-Δt_days / S).
+
+    Returns 1.0 for brand-new memories, decays toward 0 as time since
+    last access exceeds stability.
+    """
+    import time as _time
+    now = now or _time.time()
+    S = max(stability or 1.0, 0.01)
+    dt = max((now - (last_access if last_access else now)) / 86400.0, 0.0)
+    return math.exp(-dt / S)
+
+
+def update_stability(current_stability: float, access_count: int) -> float:
+    """Stability grows via the spacing effect: S_new = S * (1 + α * log(1 + n))."""
+    return max(current_stability * (1.0 + _ALPHA * math.log(1 + access_count)), _STABILITY_FLOOR)
+
+
+INTERACTION_BOOST = {
+    "capture": 1.0,
+    "retrieve": 0.15,
+    "nudge": 0.10,
+    "feedback_up": 0.20,
+    "reinforce": 0.25,
+}
+
+
+def stability_with_boost(current_stability: float, access_count: int, interaction: str = "retrieve") -> float:
+    """Update stability with both spacing-effect growth and interaction boost."""
+    boosted = current_stability + INTERACTION_BOOST.get(interaction, 0.15)
+    grown = boosted * (1.0 + _ALPHA * math.log(1 + access_count))
+    return max(grown, _STABILITY_FLOOR)
+
+
+# ---------------------------------------------------------------------------
+# Deterministic Conflict Resolver (Engraphis-inspired)
+# ---------------------------------------------------------------------------
+import re as _re
+from typing import Optional as _Optional
+
+
+def tokenize(text: str) -> set[str]:
+    """Tokenize text into a set of lowercase alphanumeric tokens (2+ chars)."""
+    return {t for t in _re.findall(r"[a-zA-Z0-9]{2,}", text.lower())}
+
+
+def jaccard(a: set[str], b: set[str]) -> float:
+    """Jaccard similarity between two token sets."""
+    if not a or not b:
+        return 0.0
+    intersection = a & b
+    union = a | b
+    return len(intersection) / max(len(union), 1)
+
+
+# Thresholds (Engraphis defaults, adapted for shorter agent memories)
+RELATED_SIM_FLOOR = 0.15
+DUP_TOKEN_JACCARD = 0.80
+SUBJECT_TOKEN_JACCARD = 0.35
+PARAPHRASE_EMBED_SIM = 0.88
+
+
+class ResolutionOp:
+    ADD = "add"
+    NOOP = "noop"
+    INVALIDATE = "invalidate"
+
+
+def resolve(
+    candidate_text: str,
+    neighbors: list[tuple[float, dict]],
+) -> tuple[str, int | None, str]:
+    """Deterministic ADD / NOOP / INVALIDATE decision against nearest neighbors.
+
+    Args:
+        candidate_text: new memory content
+        neighbors: list of (embedding_similarity, memory_dict) tuples, scored & scoped
+
+    Returns:
+        (op, target_id, reason) where op is ADD/NOOP/INVALIDATE
+    """
+    cand_tokens = tokenize(candidate_text)
+    best: tuple[float, dict, float] | None = None
+    best_sim: tuple[float, dict] | None = None
+
+    for sim, mem in neighbors:
+        if sim < RELATED_SIM_FLOOR:
+            continue
+        mem_text = f"{mem.get('content', '')}"
+        overlap = jaccard(cand_tokens, tokenize(mem_text))
+        if best is None or overlap > best[0]:
+            best = (overlap, mem, sim)
+        if best_sim is None or sim > best_sim[0]:
+            best_sim = (sim, mem)
+
+    if best is None:
+        return (ResolutionOp.ADD, None, "no related memory in scope")
+
+    overlap, mem, sim = best
+    mid = mem.get("id")
+
+    if overlap >= DUP_TOKEN_JACCARD:
+        return (ResolutionOp.NOOP, mid,
+                f"near-duplicate (Jaccard={overlap:.2f})")
+
+    if overlap >= SUBJECT_TOKEN_JACCARD:
+        return (ResolutionOp.INVALIDATE, mid,
+                f"supersedes #{mid} (Jaccard={overlap:.2f}, cos={sim:.2f})")
+
+    if best_sim is not None and best_sim[0] >= PARAPHRASE_EMBED_SIM:
+        psim, prec = best_sim
+        return (ResolutionOp.INVALIDATE, prec.get("id"),
+                f"paraphrase supersedes #{prec.get('id')} (cos={psim:.2f})")
+
+    return (ResolutionOp.ADD, None,
+            f"related but distinct (best Jaccard={overlap:.2f})")

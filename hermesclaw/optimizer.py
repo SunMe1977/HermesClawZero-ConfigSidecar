@@ -10,28 +10,33 @@ logger = logging.getLogger("hermesclaw.optimizer")
 
 
 def run_decay_and_archive_once() -> dict:
+    """Ebbinghaus-aware decay: archive near-forgotten memories, gently reduce stability of aged ones."""
     with connect_db() as conn:
         with conn.cursor() as cur:
+            # Ebbinghaus decay: reduce stability for memories untouched >30 days
             cur.execute(
-                """
-                UPDATE pages
-                SET confidence = GREATEST(0.05, confidence * 0.995),
-                    updated_at = NOW()
-                WHERE is_archived = FALSE
-                  AND last_used < NOW() - INTERVAL '7 days'
-                """
+                """UPDATE pages
+                   SET stability = GREATEST(0.5, stability * 0.97),
+                       updated_at = NOW()
+                   WHERE is_archived = FALSE
+                     AND last_access < NOW() - INTERVAL '30 days'
+                     AND stability > 0.5"""
             )
             decayed_count = cur.rowcount
 
+            # Archive: memories with low confidence OR very low Ebbinghaus retention
             cur.execute(
-                """
-                WITH stale AS (
-                    SELECT *
+                """WITH stale AS (
+                    SELECT *,
+                           exp(-EXTRACT(EPOCH FROM (NOW() - COALESCE(last_access, last_used, created_at))) / 86400.0
+                               / GREATEST(stability, 0.01)) AS retention
                     FROM pages
                     WHERE is_archived = FALSE
                       AND (
                         (ttl_days IS NOT NULL AND created_at + (ttl_days || ' days')::interval < NOW())
-                        OR confidence < 0.18
+                        OR confidence < 0.1
+                        OR exp(-EXTRACT(EPOCH FROM (NOW() - COALESCE(last_access, last_used, created_at))) / 86400.0
+                               / GREATEST(stability, 0.01)) < 0.05
                       )
                 )
                 INSERT INTO pages_archive (
@@ -42,22 +47,22 @@ def run_decay_and_archive_once() -> dict:
                        sentiment, source, ttl_days, created_at, updated_at, last_used, last_retrieved,
                        CASE
                          WHEN ttl_days IS NOT NULL AND created_at + (ttl_days || ' days')::interval < NOW() THEN 'ttl_expired'
-                         ELSE 'low_confidence'
+                         WHEN confidence < 0.1 THEN 'low_confidence'
+                         ELSE 'ebbinghaus_decay'
                        END
-                FROM stale
-                """
+                FROM stale"""
             )
             archived_count = cur.rowcount
 
             cur.execute(
-                """
-                DELETE FROM pages
-                WHERE is_archived = FALSE
-                  AND (
-                    (ttl_days IS NOT NULL AND created_at + (ttl_days || ' days')::interval < NOW())
-                    OR confidence < 0.18
-                  )
-                """
+                """DELETE FROM pages
+                   WHERE is_archived = FALSE
+                     AND (
+                       (ttl_days IS NOT NULL AND created_at + (ttl_days || ' days')::interval < NOW())
+                       OR confidence < 0.1
+                       OR exp(-EXTRACT(EPOCH FROM (NOW() - COALESCE(last_access, last_used, created_at))) / 86400.0
+                              / GREATEST(stability, 0.01)) < 0.05
+                     )"""
             )
             deleted_count = cur.rowcount
             conn.commit()
