@@ -274,7 +274,99 @@ def import_rows(rows: list[dict[str, Any]], dry_run: bool = False) -> int:
     conn.close()
 
     logger.info("Imported: %d | Skipped: %d", imported, skipped)
+
+    # Step 5: Generate embeddings for newly imported pages
+    if imported > 0:
+        _generate_missing_embeddings()
+
     return imported
+
+
+def _get_embedding_provider() -> str | None:
+    """Get the configured embedding provider."""
+    return os.getenv("EMBEDDING_PROVIDER") or os.getenv("AI_PROVIDER") or "openrouter"
+
+
+def _generate_missing_embeddings() -> int:
+    """Generate embeddings for pages that don't have them yet."""
+    try:
+        import sys
+        sys.path.insert(0, "/app/repo")
+        from hermesclaw.embeddings import generate_embedding
+    except ImportError:
+        logger.warning(
+            "Cannot import hermesclaw.embeddings — skipping embedding generation. "
+            "They will be generated on next API restart via ensure_phase1_schema."
+        )
+        return 0
+
+    try:
+        import psycopg
+        conn = psycopg.connect(
+            host=DB_HOST, port=DB_PORT, dbname=DB_NAME,
+            user=DB_USER, password=DB_PASSWORD,
+        )
+
+        # Find pages without embeddings
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT p.id, p.content
+            FROM pages p
+            LEFT JOIN embeddings e ON e.page_id = p.id
+            WHERE e.id IS NULL
+            ORDER BY p.id
+        """)
+        missing = cur.fetchall()
+        conn.close()
+
+        if not missing:
+            logger.info("All pages already have embeddings.")
+            return 0
+
+        logger.info(
+            "Generating embeddings for %d pages (provider: %s) ...",
+            len(missing), _get_embedding_provider(),
+        )
+
+        conn2 = psycopg.connect(
+            host=DB_HOST, port=DB_PORT, dbname=DB_NAME,
+            user=DB_USER, password=DB_PASSWORD,
+        )
+        generated = 0
+        errors = 0
+
+        with conn2.cursor() as cur2:
+            for page_id, content in missing:
+                if not content or len(content.strip()) < 5:
+                    continue
+                try:
+                    emb = generate_embedding(content.strip()[:8000])
+                    if emb and len(emb) > 0:
+                        cur2.execute(
+                            "INSERT INTO embeddings (page_id, embedding) VALUES (%s, %s::vector)",
+                            (page_id, str(emb)),
+                        )
+                        generated += 1
+                    else:
+                        errors += 1
+                except Exception as e:
+                    errors += 1
+                    if errors <= 3:
+                        logger.debug("  Embedding error for page %d: %s", page_id, e)
+
+                if generated % 100 == 0 and generated > 0:
+                    conn2.commit()
+                    logger.info("  ... %d embeddings generated", generated)
+
+        conn2.commit()
+        conn2.close()
+
+        logger.info("Embeddings: %d generated, %d errors", generated, errors)
+        return generated
+
+    except Exception as e:
+        logger.warning("Embedding generation failed: %s", e)
+        return 0
 
 
 # ---------------------------------------------------------------------------
