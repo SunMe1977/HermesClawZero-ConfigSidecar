@@ -1,226 +1,139 @@
-#!/bin/bash
-echo "=== HermesClawZero-ConfigSidecar Setup ==="
+#!/usr/bin/env bash
+set -euo pipefail
 
-# 1. Check Dependencies
-if ! command -v python3 &> /dev/null; then echo "[!] Python3 not found."; exit 1; fi
-if ! command -v docker &> /dev/null; then echo "[!] Docker not found."; exit 1; fi
+# ───────────────────────────────────────────────────────────
+# HermesClawZero — macOS One-Click Setup
+# ───────────────────────────────────────────────────────────
+REPO="SunMe1977/HermesClawZero-ConfigSidecar"
+REPO_URL="https://github.com/$REPO.git"
+DIR="${DIR:-$HOME/HermesClawZero-ConfigSidecar}"
+DASHBOARD_PORT="${PORT:-8010}"
 
-# 2. Dependencies
-python3 -m pip install -r requirements.txt
+RED='\033[0;31m'; GREEN='\033[0;32m'; CYAN='\033[0;36m'; BOLD='\033[1m'; NC='\033[0m'
+info()  { printf "${GREEN}✓${NC} %s\n" "$1"; }
+warn()  { printf "${CYAN}→${NC} %s\n" "$1"; }
+err()   { printf "${RED}✗${NC} %s\n" "$1"; }
+header(){ printf "\n${BOLD}%s${NC}\n" "$1"; }
 
-# Load current .env for defaults (robust against spaces/special chars in values)
-if [ -f .env ]; then
-    while IFS= read -r line || [ -n "$line" ]; do
-        case "$line" in
-            ''|'#'*) continue ;;
-        esac
-        key="${line%%=*}"
-        value="${line#*=}"
-        if [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
-            export "$key=$value"
-        fi
-    done < .env
+# OSC 8 hyperlink — clickable in modern terminals (iTerm2, kitty, Terminal.app)
+clickable() { printf "\e]8;;%s\a%s\e]8;;\a" "$1" "$2"; }
+
+# ── Step 0: macOS check ──
+header "🍎 HermesClawZero — macOS Setup"
+if [[ "$(uname)" != "Darwin" ]]; then
+    err "This script is for macOS only."
+    exit 1
 fi
 
-# 3. Provider Menu
-echo "Select Primary AI Provider:"
-echo "1. Local Ollama (Docker)"
-echo "2. OpenAI"
-echo "3. Google Gemini"
-echo "4. Anthropic"
-echo "5. OpenRouter"
-read -p "Choice (1-5): " CHOICE
-
-case $CHOICE in
-    1) PROVIDER="ollama"; KEY_VAR="";;
-    2) PROVIDER="openai"; KEY_VAR="OPENAI_API_KEY";;
-    3) PROVIDER="gemini"; KEY_VAR="GEMINI_API_KEY";;
-    4) PROVIDER="anthropic"; KEY_VAR="ANTHROPIC_API_KEY";;
-    5) PROVIDER="openrouter"; KEY_VAR="OPENROUTER_API_KEY";;
-    *) echo "Invalid choice"; exit 1;;
-esac
-
-KEY=""
-if [ -n "$KEY_VAR" ]; then
-    CURRENT_PROVIDER_KEY="${!KEY_VAR}"
-    read -p "Enter $KEY_VAR [${CURRENT_PROVIDER_KEY:-}]: " INPUT_PROVIDER_KEY
-    KEY="${INPUT_PROVIDER_KEY:-$CURRENT_PROVIDER_KEY}"
-fi
-
-# Preserve existing provider keys unless explicitly replaced for selected provider.
-FINAL_OPENAI_API_KEY="${OPENAI_API_KEY:-}"
-FINAL_GEMINI_API_KEY="${GEMINI_API_KEY:-}"
-FINAL_ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:-}"
-FINAL_OPENROUTER_API_KEY="${OPENROUTER_API_KEY:-}"
-
-case "$PROVIDER" in
-    openai) FINAL_OPENAI_API_KEY="$KEY" ;;
-    gemini) FINAL_GEMINI_API_KEY="$KEY" ;;
-    anthropic) FINAL_ANTHROPIC_API_KEY="$KEY" ;;
-    openrouter) FINAL_OPENROUTER_API_KEY="$KEY" ;;
-esac
-
-DEFAULT_EMBEDDING_PROVIDER="${EMBEDDING_PROVIDER:-auto}"
-if [ "$PROVIDER" = "anthropic" ] && [ "$DEFAULT_EMBEDDING_PROVIDER" = "auto" ]; then
-    DEFAULT_EMBEDDING_PROVIDER="openrouter"
-fi
-read -p "Embedding provider (auto|ollama|openai|openrouter|gemini) [${DEFAULT_EMBEDDING_PROVIDER}]: " INPUT_EMBEDDING_PROVIDER
-FINAL_EMBEDDING_PROVIDER="${INPUT_EMBEDDING_PROVIDER:-$DEFAULT_EMBEDDING_PROVIDER}"
-FINAL_EMBEDDING_PROVIDER="$(echo "$FINAL_EMBEDDING_PROVIDER" | tr '[:upper:]' '[:lower:]')"
-
-case "$FINAL_EMBEDDING_PROVIDER" in
-    auto|ollama|openai|openrouter|gemini) ;;
-    *)
-        echo "[SETUP] Invalid EMBEDDING_PROVIDER '$FINAL_EMBEDDING_PROVIDER'. Falling back to 'auto'."
-        FINAL_EMBEDDING_PROVIDER="auto"
-        ;;
-esac
-
-if [ "$FINAL_EMBEDDING_PROVIDER" = "openrouter" ] && [ -z "$FINAL_OPENROUTER_API_KEY" ]; then
-    read -p "Enter OPENROUTER_API_KEY for embeddings: " FINAL_OPENROUTER_API_KEY
-fi
-if [ "$FINAL_EMBEDDING_PROVIDER" = "openai" ] && [ -z "$FINAL_OPENAI_API_KEY" ]; then
-    read -p "Enter OPENAI_API_KEY for embeddings: " FINAL_OPENAI_API_KEY
-fi
-if [ "$FINAL_EMBEDDING_PROVIDER" = "gemini" ] && [ -z "$FINAL_GEMINI_API_KEY" ]; then
-    read -p "Enter GEMINI_API_KEY for embeddings: " FINAL_GEMINI_API_KEY
-fi
-
-# Auto-correct common key/provider mismatches to prevent runtime 401/500 loops.
-if [ "$PROVIDER" = "openai" ] && [[ "$FINAL_OPENAI_API_KEY" == sk-or-* ]]; then
-    echo "[SETUP] Detected OpenRouter key format in OPENAI_API_KEY. Switching AI_PROVIDER to openrouter."
-    PROVIDER="openrouter"
-    if [ -z "$FINAL_OPENROUTER_API_KEY" ]; then
-        FINAL_OPENROUTER_API_KEY="$FINAL_OPENAI_API_KEY"
+# ── Step 1: Homebrew ──
+header "1/5  Checking Homebrew"
+if command -v brew &>/dev/null; then
+    info "Homebrew $(brew --version | head -1)"
+else
+    warn "Installing Homebrew from https://brew.sh …"
+    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+    # Add to PATH for Apple Silicon
+    if [[ -f /opt/homebrew/bin/brew ]]; then
+        eval "$(/opt/homebrew/bin/brew shellenv)"
     fi
-    FINAL_OPENAI_API_KEY=""
+    info "Homebrew installed"
 fi
 
-if [ "$PROVIDER" = "openrouter" ] && [[ "$FINAL_OPENROUTER_API_KEY" == sk-* ]] && [[ "$FINAL_OPENROUTER_API_KEY" != sk-or-* ]]; then
-    echo "[SETUP] Detected OpenAI-style key in OPENROUTER_API_KEY. Switching AI_PROVIDER to openai."
-    PROVIDER="openai"
-    if [ -z "$FINAL_OPENAI_API_KEY" ]; then
-        FINAL_OPENAI_API_KEY="$FINAL_OPENROUTER_API_KEY"
-    fi
-    FINAL_OPENROUTER_API_KEY=""
-fi
-
-if [ "$FINAL_EMBEDDING_PROVIDER" = "openai" ] && [ -z "$FINAL_OPENAI_API_KEY" ] && [ -n "$FINAL_OPENROUTER_API_KEY" ]; then
-    echo "[SETUP] EMBEDDING_PROVIDER=openai but OPENAI_API_KEY is empty. Using openrouter embeddings."
-    FINAL_EMBEDDING_PROVIDER="openrouter"
-fi
-
-if [ "$FINAL_EMBEDDING_PROVIDER" = "openrouter" ] && [ -z "$FINAL_OPENROUTER_API_KEY" ] && [ -n "$FINAL_OPENAI_API_KEY" ]; then
-    echo "[SETUP] EMBEDDING_PROVIDER=openrouter but OPENROUTER_API_KEY is empty. Using openai embeddings."
-    FINAL_EMBEDDING_PROVIDER="openai"
-fi
-
-PROVIDER_KEY_LINES=""
-if [ -n "$FINAL_OPENAI_API_KEY" ]; then PROVIDER_KEY_LINES+="OPENAI_API_KEY=$FINAL_OPENAI_API_KEY\n"; fi
-if [ -n "$FINAL_GEMINI_API_KEY" ]; then PROVIDER_KEY_LINES+="GEMINI_API_KEY=$FINAL_GEMINI_API_KEY\n"; fi
-if [ -n "$FINAL_ANTHROPIC_API_KEY" ]; then PROVIDER_KEY_LINES+="ANTHROPIC_API_KEY=$FINAL_ANTHROPIC_API_KEY\n"; fi
-if [ -n "$FINAL_OPENROUTER_API_KEY" ]; then PROVIDER_KEY_LINES+="OPENROUTER_API_KEY=$FINAL_OPENROUTER_API_KEY\n"; fi
-
-read -p "Enter API Key [${API_KEY:-YOUR_KEY_HERE}]: " INPUT_API_KEY
-read -p "Enter Dashboard Password [${DASHBOARD_PASSWORD:-admin}]: " INPUT_DASHBOARD_PASS
-read -p "Enter Database Password [${DB_PASSWORD:-}]: " INPUT_DB_PASSWORD
-read -p "Enter Base App Version [${APP_VERSION:-0.1.0}]: " INPUT_APP_VERSION
-read -p "Enable Auto Update Worker? (true/false) [${AUTO_UPDATE_ENABLED:-false}]: " INPUT_AUTO_UPDATE_ENABLED
-read -p "Auto apply updates when found? (true/false) [${AUTO_UPDATE_APPLY:-false}]: " INPUT_AUTO_UPDATE_APPLY
-read -p "Auto update interval in minutes [${AUTO_UPDATE_INTERVAL_MINUTES:-60}]: " INPUT_AUTO_UPDATE_INTERVAL_MINUTES
-DETECTED_REPO_DIR="$(pwd)"
-DETECTED_REMOTE="origin"
-DETECTED_BRANCH="main"
-if command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-    DETECTED_REPO_DIR="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
-    UPSTREAM_REF="$(git rev-parse --abbrev-ref --symbolic-full-name @{u} 2>/dev/null || true)"
-    if [ -n "$UPSTREAM_REF" ] && [[ "$UPSTREAM_REF" == */* ]]; then
-        DETECTED_REMOTE="${UPSTREAM_REF%%/*}"
-        DETECTED_BRANCH="${UPSTREAM_REF#*/}"
-    else
-        CURRENT_BRANCH="$(git branch --show-current 2>/dev/null || true)"
-        FIRST_REMOTE="$(git remote 2>/dev/null | head -n 1)"
-        if [ -n "$CURRENT_BRANCH" ]; then DETECTED_BRANCH="$CURRENT_BRANCH"; fi
-        if [ -n "$FIRST_REMOTE" ]; then DETECTED_REMOTE="$FIRST_REMOTE"; fi
-    fi
-fi
-
-read -p "Git remote for updates [${AUTO_UPDATE_REMOTE:-$DETECTED_REMOTE}]: " INPUT_AUTO_UPDATE_REMOTE
-read -p "Git branch for updates [${AUTO_UPDATE_BRANCH:-$DETECTED_BRANCH}]: " INPUT_AUTO_UPDATE_BRANCH
-read -p "Repo path for updater [${UPDATE_REPO_DIR:-$DETECTED_REPO_DIR}]: " INPUT_UPDATE_REPO_DIR
-read -p "Restart command after update (optional) [${UPDATE_RESTART_COMMAND:-}]: " INPUT_UPDATE_RESTART_COMMAND
-
-DETECTED_HERMES_DB="${HERMES_DB_PATH:-}"
-if [ -z "$DETECTED_HERMES_DB" ]; then
-    CANDIDATE_PATHS=(
-        "$HOME/.hermes/state.db"
-        "$HOME/.local/share/hermes/state.db"
-        "$HOME/hermes/state.db"
-    )
-    for p in "${CANDIDATE_PATHS[@]}"; do
-        if [ -f "$p" ]; then
-            DETECTED_HERMES_DB="$p"
+# ── Step 2: Docker ──
+header "2/5  Checking Docker"
+if command -v docker &>/dev/null && docker info &>/dev/null 2>&1; then
+    info "Docker $(docker --version)"
+else
+    warn "Docker Desktop not running — installing via Homebrew …"
+    brew install --cask docker
+    warn "Starting Docker Desktop (may take a moment)…"
+    open -a Docker
+    for i in $(seq 1 60); do
+        if docker info &>/dev/null 2>&1; then
+            info "Docker Desktop ready"
             break
         fi
+        sleep 2
     done
+    if ! docker info &>/dev/null 2>&1; then
+        err "Docker Desktop did not start in time. Launch it manually, then re-run this script."
+        exit 1
+    fi
 fi
 
-if [ -z "$DETECTED_HERMES_DB" ]; then
-    echo "[SETUP] Searching for Hermes state.db (this can take a while)..."
-    DETECTED_HERMES_DB="$(find / -type f -name state.db 2>/dev/null | grep -i hermes | head -n 1)"
+# ── Step 3: Clone / Pull repo ──
+header "3/5  Cloning repository"
+if [[ -d "$DIR" ]]; then
+    warn "Directory $DIR exists — pulling latest…"
+    git -C "$DIR" pull --ff-only
+else
+    git clone "$REPO_URL" "$DIR"
+fi
+info "Repository at $DIR"
+cd "$DIR"
+
+# ── Step 4: .env ──
+header "4/5  Configuring environment"
+if [[ ! -f .env ]]; then
+    cp .env.example .env
+    # Generate random credentials
+    if [[ "$(uname)" == "Darwin" ]]; then
+        GEN_KEY="$(uuidgen | md5 | head -c 32)"
+        GEN_DB="$(uuidgen | md5 | head -c 16)"
+        GEN_DASH="$(uuidgen | md5 | head -c 16)"
+    else
+        GEN_KEY="$(date +%s | md5sum | head -c 32)"
+        GEN_DB="$(date +%s | md5sum | head -c 16)"
+        GEN_DASH="$(date +%s | md5sum | head -c 16)"
+    fi
+    if [[ "$(uname)" == "Darwin" ]]; then
+        sed -i '' "s/your_secret_api_key_here/$GEN_KEY/" .env
+        sed -i '' "s/your_db_password_here/$GEN_DB/" .env
+        sed -i '' "s/change_this_dashboard_password/$GEN_DASH/" .env
+    else
+        sed -i "s/your_secret_api_key_here/$GEN_KEY/" .env
+        sed -i "s/your_db_password_here/$GEN_DB/" .env
+        sed -i "s/change_this_dashboard_password/$GEN_DASH/" .env
+    fi
+    info ".env created with random credentials"
+else
+    warn ".env already exists — using it as-is"
 fi
 
-read -p "Hermes DB path for watchdog (optional) [${DETECTED_HERMES_DB:-}]: " INPUT_HERMES_DB_PATH
-FINAL_HERMES_DB_PATH="${INPUT_HERMES_DB_PATH:-$DETECTED_HERMES_DB}"
+# ── Step 5: Docker Compose ──
+header "5/5  Starting HermesClawZero"
+docker compose --profile ollama up -d --build
 
-# 4. Write .env
-read -p "Enter Telegram Bot Token [${TELEGRAM_BOT_TOKEN:-}]: " INPUT_TELEGRAM_TOKEN
-read -p "Enter Telegram Chat ID [${TELEGRAM_CHAT_ID:-}]: " INPUT_TELEGRAM_CHAT_ID
-
-cat <<EOF > .env
-AI_PROVIDER=$PROVIDER
-EMBEDDING_PROVIDER=$FINAL_EMBEDDING_PROVIDER
-$(printf "%b" "$PROVIDER_KEY_LINES")
-API_URL=https://openclawmemwin.postarmory.com
-API_KEY=${INPUT_API_KEY:-${API_KEY:-"YOUR_KEY_HERE"}}
-SYNC_DIR=$(pwd)/sync
-DB_PASSWORD=${INPUT_DB_PASSWORD:-$DB_PASSWORD}
-DASHBOARD_PASSWORD=${INPUT_DASHBOARD_PASS:-${DASHBOARD_PASSWORD:-admin}}
-TELEGRAM_BOT_TOKEN=${INPUT_TELEGRAM_TOKEN:-$TELEGRAM_BOT_TOKEN}
-TELEGRAM_CHAT_ID=${INPUT_TELEGRAM_CHAT_ID:-$TELEGRAM_CHAT_ID}
-APP_VERSION=${INPUT_APP_VERSION:-${APP_VERSION:-0.1.0}}
-AUTO_UPDATE_ENABLED=${INPUT_AUTO_UPDATE_ENABLED:-${AUTO_UPDATE_ENABLED:-false}}
-AUTO_UPDATE_APPLY=${INPUT_AUTO_UPDATE_APPLY:-${AUTO_UPDATE_APPLY:-false}}
-AUTO_UPDATE_INTERVAL_MINUTES=${INPUT_AUTO_UPDATE_INTERVAL_MINUTES:-${AUTO_UPDATE_INTERVAL_MINUTES:-60}}
-AUTO_UPDATE_REMOTE=${INPUT_AUTO_UPDATE_REMOTE:-${AUTO_UPDATE_REMOTE:-origin}}
-AUTO_UPDATE_BRANCH=${INPUT_AUTO_UPDATE_BRANCH:-${AUTO_UPDATE_BRANCH:-main}}
-UPDATE_REPO_DIR=${INPUT_UPDATE_REPO_DIR:-${UPDATE_REPO_DIR:-$(pwd)}}
-UPDATE_RESTART_COMMAND=${INPUT_UPDATE_RESTART_COMMAND:-$UPDATE_RESTART_COMMAND}
-HERMES_DB_PATH=${FINAL_HERMES_DB_PATH}
-OPENAI_EMBED_MODEL=${OPENAI_EMBED_MODEL:-text-embedding-3-small}
-OPENROUTER_EMBED_MODEL=${OPENROUTER_EMBED_MODEL:-text-embedding-3-small}
-GEMINI_EMBED_MODEL=${GEMINI_EMBED_MODEL:-models/text-embedding-004}
-OLLAMA_HOST=http://host.docker.internal:11435
-EOF
-echo ".env saved."
-
-# 5. Ollama Setup
-if [ "$PROVIDER" == "ollama" ]; then
-    echo "[INFO] Starting Ollama container..."
-    docker compose up -d ollama
-    sleep 10
-    docker exec gbrain-ollama ollama pull nomic-embed-text
-    docker exec gbrain-ollama ollama pull llama3.1
+# Wait for health
+printf "\n  Waiting for API…"
+for i in $(seq 1 30); do
+    if curl -sf http://localhost:$DASHBOARD_PORT/healthz >/dev/null 2>&1; then
+        echo ""; info "API ready"
+        break
+    fi
+    printf "."
+    sleep 2
+done
+if ! curl -sf http://localhost:$DASHBOARD_PORT/healthz >/dev/null 2>&1; then
+    err "API did not become healthy. Check: docker compose logs api"
+    exit 1
 fi
 
-# 6. Skills
-SKILL_DIR="$HOME/.hermes/skills/productivity/hermesclawzero-memory"
-mkdir -p "$SKILL_DIR"
-cp -r hermes-skill/* "$SKILL_DIR/"
+# ── Done ──
+header "✅ HermesClawZero is running"
 
-echo "=== Setup Complete ==="
-read -p "Run start.sh now? (Y/n): " RUN_START
-if [[ "$RUN_START" =~ ^[Yy]$ ]]; then
-    chmod +x start.sh
-    ./start.sh
-fi
+# Dashboard URL (clickable)
+DASH_URL="http://localhost:$DASHBOARD_PORT/dashboard"
+HEALTH_URL="http://localhost:$DASHBOARD_PORT/healthz"
+
+printf "  ${BOLD}Dashboard:${NC}  "
+clickable "$DASH_URL" "$DASH_URL"
+echo ""
+printf "  ${BOLD}Health:${NC}     "
+clickable "$HEALTH_URL" "$HEALTH_URL"
+echo ""
+echo ""
+printf "  Credentials stored in: $(clickable "file://$DIR/.env" "$DIR/.env")\n"
+printf "  Dashboard login:       admin / (see DASHBOARD_PASSWORD in .env)\n"
+echo ""
+printf "  ${CYAN}Run ${BOLD}docker compose logs -f api${NC} to follow logs\n"
