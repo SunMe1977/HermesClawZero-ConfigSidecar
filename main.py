@@ -36,6 +36,7 @@ async def url_api_key_middleware(request: Request, call_next):
         "/docs/", "/dashboard", "/delete", "/export",
         "/tag_auto/", "/page_html", "/optimizer/", "/update/",
         "/import", "/graph", "/feedback", "/search", "/memory", "/nudge", "/episodic", "/ask",
+        "/why", "/timeline",
     )
 
     if path in exempt_exact_paths or any(path.startswith(p) for p in exempt_prefixes):

@@ -565,6 +565,24 @@
     <div style="font-size:13px; color:rgba(200,180,255,0.6); margin-top:2px;">{{ galaxy_total }} memories · {{ galaxy_tenants|length }} tenants</div>
   </div>
 
+  <!-- Galaxy v3 Filter / Search bar -->
+  <div id="galaxyFilterBar" style="position:fixed; top:68px; left:50%; transform:translateX(-50%); z-index:10001; display:flex; gap:8px; align-items:center; pointer-events:auto;">
+    <input id="galaxySearch" type="text" placeholder="🔍 Search memories..." style="padding:6px 12px; border-radius:6px; border:1px solid rgba(200,160,255,0.25); background:rgba(10,10,30,0.75); color:#e8e0ff; font-size:13px; width:200px; outline:none; backdrop-filter:blur(6px);">
+    <select id="galaxyTypeFilter" style="padding:6px 10px; border-radius:6px; border:1px solid rgba(200,160,255,0.25); background:rgba(10,10,30,0.75); color:#c8b8ff; font-size:12px; outline:none; cursor:pointer;">
+      <option value="all">All Types</option>
+      {% for t, cnt in galaxy_type_data.items() %}
+      <option value="{{ t }}">{{ t }} ({{ cnt }})</option>
+      {% endfor %}
+    </select>
+    <select id="galaxyConfFilter" style="padding:6px 10px; border-radius:6px; border:1px solid rgba(200,160,255,0.25); background:rgba(10,10,30,0.75); color:#c8b8ff; font-size:12px; outline:none; cursor:pointer;">
+      <option value="all">All Confidence</option>
+      <option value="high">High ≥0.7 ({{ galaxy_high_conf }})</option>
+      <option value="med">Medium 0.4–0.7 ({{ galaxy_med_conf }})</option>
+      <option value="low">Low <0.4 ({{ galaxy_low_conf }})</option>
+    </select>
+    <span id="galaxyFilterCount" style="font-size:11px; color:rgba(200,180,255,0.5); padding-left:4px;"></span>
+  </div>
+
   <!-- Legend -->
   <div id="galaxyLegend" style="position:fixed; bottom:20px; left:50%; transform:translateX(-50%); z-index:10001; display:flex; gap:20px; flex-wrap:wrap; justify-content:center; pointer-events:none; font-size:12px; color:rgba(200,180,255,0.5);"></div>
 
@@ -624,9 +642,52 @@ const GALAXY_DATA = {
   highConf: {{ galaxy_high_conf }},
   medConf: {{ galaxy_med_conf }},
   lowConf: {{ galaxy_low_conf }},
+  typeData: {{ galaxy_type_data|tojson }},
+  tenantTypes: {{ galaxy_tenant_types|tojson }},
 };
 
 let C, ctx, W, H, animId, galaxyActive = false;
+const G_FILTER = { search: '', type: 'all', conf: 'all', visibleOrbits: {} };
+
+function applyGalaxyFilter() {
+  G_FILTER.search = (document.getElementById('galaxySearch')?.value || '').toLowerCase();
+  G_FILTER.type = document.getElementById('galaxyTypeFilter')?.value || 'all';
+  G_FILTER.conf = document.getElementById('galaxyConfFilter')?.value || 'all';
+
+  const rawTenants = GALAXY_DATA.tenants;
+  // Mark which tenants have at least one match
+  const visible = {};
+  let matchedCount = 0;
+  rawTenants.forEach(t => {
+    const nameMatch = !G_FILTER.search || t.name.toLowerCase().includes(G_FILTER.search);
+    const typeOk = G_FILTER.type === 'all' || (GALAXY_DATA.tenantTypes[t.scope] && GALAXY_DATA.tenantTypes[t.scope][G_FILTER.type] > 0);
+    visible[t.scope] = nameMatch && typeOk;
+    if (visible[t.scope]) matchedCount += t.count;
+  });
+  G_FILTER.visibleOrbits = visible;
+
+  const countEl = document.getElementById('galaxyFilterCount');
+  if (countEl) {
+    const total = GALAXY_DATA.total;
+    countEl.textContent = matchedCount < total ? `${matchedCount} / ${total} matched` : '';
+  }
+
+  // Rebuild orbits with filter applied
+  if (galaxyActive) {
+    buildOrbits();
+  }
+}
+
+// Wire filter inputs — debounced search
+document.addEventListener('DOMContentLoaded', () => {
+  const searchEl = document.getElementById('galaxySearch');
+  const typeEl = document.getElementById('galaxyTypeFilter');
+  const confEl = document.getElementById('galaxyConfFilter');
+  if (searchEl) searchEl.addEventListener('input', applyGalaxyFilter);
+  if (typeEl) typeEl.addEventListener('change', applyGalaxyFilter);
+  if (confEl) confEl.addEventListener('change', applyGalaxyFilter);
+});
+
 const COLORS = ['#ff6b9d','#6ec6ff','#6ee7b7','#fbbf24','#a78bfa','#f472b6','#34d399','#f59e0b','#818cf8','#fb7185','#2dd4bf','#e879f9','#38bdf8','#facc15','#c084fc'];
 const HALF = 0.5, PI2 = Math.PI * 2;
 
@@ -683,6 +744,10 @@ function buildOrbits() {
   const maxMem = Math.max(1, ...tenants.map(t => t.count));
 
   tenants.forEach((t, i) => {
+    // Skip if filtered out
+    if (G_FILTER.type !== 'all' || G_FILTER.search) {
+      if (!G_FILTER.visibleOrbits[t.scope]) return;
+    }
     const color = COLORS[i % COLORS.length];
     const radius = 0.12 + (i / Math.max(1, n - 1)) * 0.38;
     const nodeCount = Math.max(3, Math.min(40, Math.round((t.count / maxMem) * 30) + 5));

@@ -380,6 +380,33 @@ async def dashboard(
     ]
     galaxy_total = int(total_items)
 
+    # Memory type breakdown for Galaxy v3 filter
+    galaxy_type_data = {}
+    try:
+        with connect_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT memory_type, COUNT(*) FROM pages WHERE is_archived = FALSE GROUP BY memory_type ORDER BY COUNT(*) DESC"
+                )
+                galaxy_type_data = {r[0]: r[1] for r in cur.fetchall()}
+    except Exception:
+        galaxy_type_data = {"fact": 0, "conversation": 0}
+
+    # Tenant-scoped type data for search
+    galaxy_tenant_types = {}
+    try:
+        with connect_db() as conn:
+            with conn.cursor() as cur:
+                for t in galaxy_tenants_list:
+                    sid = t["scope"]
+                    cur.execute(
+                        "SELECT memory_type, COUNT(*) FROM pages WHERE is_archived = FALSE AND scope_id = %s GROUP BY memory_type",
+                        (sid,)
+                    )
+                    galaxy_tenant_types[sid] = {r[0]: r[1] for r in cur.fetchall()}
+    except Exception:
+        galaxy_tenant_types = {}
+
     # Tier stats
     try:
         from hermesclaw.consolidation import compute_tier_stats
@@ -406,6 +433,8 @@ async def dashboard(
         galaxy_med_conf=galaxy_med_conf,
         galaxy_low_conf=galaxy_low_conf,
         galaxy_total=galaxy_total,
+        galaxy_type_data=galaxy_type_data,
+        galaxy_tenant_types=galaxy_tenant_types,
         watchdog_pending_text=watchdog_pending_text,
         watchdog_updated_text=watchdog_updated_text,
         watchdog_pending_value=watchdog_pending_value,
@@ -845,6 +874,201 @@ async def graph_entity_detail(entity_name: str, depth: int = 2):
         graph = query_entity_graph(conn, entity_name, depth=depth)
         memories = get_memories_for_entity(conn, entity_name)
     return {"status": "ok", "graph": graph, "memories": memories}
+
+
+# ── Bi-Temporal: /why + /timeline ──
+
+@router.get("/why/{page_id}", dependencies=[Depends(get_current_username)])
+async def why_page(page_id: int):
+    """Bi-temporal explanation: what this memory superseded, what superseded it, and version history."""
+    with connect_db() as conn:
+        with conn.cursor() as cur:
+            # Current memory
+            cur.execute(
+                "SELECT id, content, memory_type, importance, confidence, created_at, "
+                "valid_to, superseded_by, stability, frequency "
+                "FROM pages WHERE id = %s", (page_id,)
+            )
+            current = cur.fetchone()
+            if not current:
+                raise HTTPException(status_code=404, detail="Memory not found")
+
+            current_memory = {
+                "id": current[0], "content": current[1], "type": current[2],
+                "importance": current[3], "confidence": current[4],
+                "created_at": current[5].isoformat() if current[5] else None,
+                "valid_to": current[6].isoformat() if current[6] else None,
+                "superseded_by": current[7],
+                "stability": current[8], "frequency": current[9],
+            }
+
+            # What it superseded (memories where this id is in their superseded_by)
+            cur.execute(
+                "SELECT id, content, memory_type, created_at, valid_to, importance, confidence "
+                "FROM pages WHERE superseded_by = %s ORDER BY created_at DESC LIMIT 5",
+                (page_id,)
+            )
+            superseded = [
+                {"id": r[0], "content": r[1], "type": r[2],
+                 "created_at": r[3].isoformat() if r[3] else None,
+                 "valid_to": r[4].isoformat() if r[4] else None,
+                 "importance": r[5], "confidence": r[6]}
+                for r in cur.fetchall()
+            ]
+
+            # What superseded this memory (the id in this memory's superseded_by)
+            sup_id = current[7]
+            superseded_by_info = None
+            if sup_id:
+                cur.execute(
+                    "SELECT id, content, memory_type, created_at, importance, confidence "
+                    "FROM pages WHERE id = %s", (sup_id,)
+                )
+                r = cur.fetchone()
+                if r:
+                    superseded_by_info = {
+                        "id": r[0], "content": r[1], "type": r[2],
+                        "created_at": r[3].isoformat() if r[3] else None,
+                        "importance": r[4], "confidence": r[5],
+                    }
+
+            # Version history from memory_versions table
+            cur.execute(
+                "SELECT id, content, memory_type, importance, confidence, version, "
+                "change_reason, created_at "
+                "FROM memory_versions WHERE page_id = %s ORDER BY version ASC",
+                (page_id,)
+            )
+            versions = [
+                {"id": r[0], "content": r[1], "type": r[2],
+                 "importance": r[3], "confidence": r[4],
+                 "version": r[5], "reason": r[6],
+                 "created_at": r[7].isoformat() if r[7] else None}
+                for r in cur.fetchall()
+            ]
+
+    return {
+        "status": "ok",
+        "page_id": page_id,
+        "current": current_memory,
+        "superseded": superseded,
+        "superseded_by": superseded_by_info,
+        "versions": versions,
+        "total_versions": len(versions),
+    }
+
+
+@router.get("/timeline", dependencies=[Depends(get_current_username)])
+async def bi_timeline(
+    scope_id: str | None = None,
+    limit: int = 50,
+    days_back: int | None = None,
+):
+    """Bi-temporal timeline: show all memory changes (supersessions, version history) over time."""
+    from hermesclaw.scoring import build_scope_filter
+    scope_clause, scope_params = build_scope_filter(scope_id, "p.scope_id")
+    time_clause = ""
+    time_params: list = []
+    if days_back:
+        time_clause = " AND p.created_at >= NOW() - INTERVAL '%s days'"
+        time_params = [days_back]
+
+    with connect_db() as conn:
+        with conn.cursor() as cur:
+            # 1) Supersessions: memories that were invalidated (valid_to IS NOT NULL)
+            cur.execute(
+                f"""
+                SELECT p.id, p.content, p.memory_type, p.created_at, p.valid_to,
+                       p.superseded_by, p.importance, p.confidence,
+                       sup.content AS superseded_by_content,
+                       sup.created_at AS superseded_at
+                FROM pages p
+                LEFT JOIN pages sup ON p.superseded_by = sup.id
+                WHERE p.valid_to IS NOT NULL
+                  {scope_clause} {time_clause}
+                ORDER BY p.valid_to DESC
+                LIMIT %s
+                """,
+                scope_params + time_params + [limit],
+            )
+            supersessions = [
+                {"id": r[0], "content": r[1], "type": r[2],
+                 "created_at": r[3].isoformat() if r[3] else None,
+                 "valid_to": r[4].isoformat() if r[4] else None,
+                 "superseded_by_id": r[5],
+                 "superseded_by_content": r[8],
+                 "superseded_at": r[9].isoformat() if r[9] else None,
+                 "importance": r[6], "confidence": r[7],
+                 "event_type": "superseded"}
+                for r in cur.fetchall()
+            ]
+
+            # 2) Versions: major edits from memory_versions
+            cur.execute(
+                f"""
+                SELECT mv.page_id, mv.content, mv.memory_type, mv.created_at,
+                       mv.version, mv.change_reason, mv.importance, mv.confidence,
+                       p.content AS current_content
+                FROM memory_versions mv
+                JOIN pages p ON mv.page_id = p.id
+                WHERE mv.version > 1
+                  {scope_clause} {time_clause}
+                ORDER BY mv.created_at DESC
+                LIMIT %s
+                """,
+                scope_params + time_params + [limit],
+            )
+            edits = [
+                {"page_id": r[0], "content": r[1], "type": r[2],
+                 "created_at": r[3].isoformat() if r[3] else None,
+                 "version": r[4], "reason": r[5],
+                 "importance": r[6], "confidence": r[7],
+                 "current_content": r[8],
+                 "event_type": "edit"}
+                for r in cur.fetchall()
+            ]
+
+            # 3) New memories (first capture, no version > 1, created recently)
+            cur.execute(
+                f"""
+                SELECT p.id, p.content, p.memory_type, p.created_at,
+                       p.importance, p.confidence, p.frequency
+                FROM pages p
+                WHERE p.id NOT IN (SELECT DISTINCT page_id FROM memory_versions WHERE version > 1)
+                  AND p.created_at >= NOW() - INTERVAL '7 days'
+                  {scope_clause} {time_clause}
+                ORDER BY p.created_at DESC
+                LIMIT %s
+                """,
+                scope_params + time_params + [limit],
+            )
+            new_memories = [
+                {"id": r[0], "content": r[1], "type": r[2],
+                 "created_at": r[3].isoformat() if r[3] else None,
+                 "importance": r[4], "confidence": r[5], "frequency": r[6],
+                 "event_type": "new"}
+                for r in cur.fetchall()
+            ]
+
+    # Merge and sort all events by created_at desc
+    all_events: list[dict] = []
+    for e in supersessions:
+        all_events.append({"timestamp": e.get("valid_to") or e.get("created_at"), **e})
+    for e in edits:
+        all_events.append({"timestamp": e.get("created_at"), **e})
+    for e in new_memories:
+        all_events.append({"timestamp": e.get("created_at"), **e})
+
+    all_events.sort(key=lambda x: x.get("timestamp") or "", reverse=True)
+
+    return {
+        "status": "ok",
+        "timeline": all_events[:limit],
+        "total": len(all_events),
+        "supersessions": len(supersessions),
+        "edits": len(edits),
+        "new_memories": len(new_memories),
+    }
 
 
 @router.get("/graph/search", dependencies=[Depends(get_current_username)])

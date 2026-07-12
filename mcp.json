@@ -1,0 +1,103 @@
+{
+  "$schema": "https://raw.githubusercontent.com/anthropics/anthropic-cookbook/main/mcp/mcp.schema.json",
+  "name": "hermesclawzero-memory",
+  "version": "0.1.0",
+  "description": "Long-term semantic memory server with pgvector + Ollama. Search, capture, graph traversal, episodic timeline, and memory management via MCP tools.",
+  "command": "python",
+  "args": [
+    "-m",
+    "mcp_server"
+  ],
+  "env": {
+    "MCP_BASE_URL": {
+      "description": "Sidecar API base URL (default: http://localhost:8010)",
+      "default": "http://localhost:8010"
+    },
+    "API_KEY": {
+      "description": "Sidecar API key for authentication (required)",
+      "required": true
+    }
+  },
+  "tools": [
+    {
+      "name": "search_memory",
+      "description": "Search long-term memory with hybrid vector+lexical scoring"
+    },
+    {
+      "name": "capture_memory",
+      "description": "Capture a new piece of information into long-term memory"
+    },
+    {
+      "name": "ask_question",
+      "description": "Ask a natural language question — searches vector + graph, synthesizes answer via LLM"
+    },
+    {
+      "name": "memory_feedback",
+      "description": "Rate a memory as helpful or not helpful"
+    },
+    {
+      "name": "graph_entities",
+      "description": "List top entities in the knowledge graph"
+    },
+    {
+      "name": "graph_search",
+      "description": "Search for a specific entity in the knowledge graph"
+    },
+    {
+      "name": "graph_traverse",
+      "description": "Traverse relationships from an entity"
+    },
+    {
+      "name": "graph_rag_search",
+      "description": "GraphRAG: search memories via entity graph traversal"
+    },
+    {
+      "name": "episodic_timeline",
+      "description": "Get episodic memory timeline"
+    },
+    {
+      "name": "record_episode",
+      "description": "Manually record an episodic memory"
+    },
+    {
+      "name": "memory_update",
+      "description": "Edit a stored memory's content and/or type"
+    },
+    {
+      "name": "memory_merge",
+      "description": "Merge multiple memories into one"
+    },
+    {
+      "name": "memory_nudge",
+      "description": "Get most important recent memories"
+    },
+    {
+      "name": "run_dedup",
+      "description": "Auto-merge duplicate or semantically similar memories"
+    },
+    {
+      "name": "run_tier_assignment",
+      "description": "Recalculate memory tiers"
+    },
+    {
+      "name": "run_reflection",
+      "description": "Analyze memories for contradictions"
+    },
+    {
+      "name": "run_optimizer",
+      "description": "Run full optimizer cycle"
+    },
+    {
+      "name": "dashboard_stats",
+      "description": "Get live dashboard statistics"
+    },
+    {
+      "name": "why_memory",
+      "description": "Bi-temporal explanation of a memory's history"
+    },
+    {
+      "name": "bi_timeline",
+      "description": "Bi-temporal timeline of all memory changes"
+    }
+  ]
+}

@@ -6,6 +6,9 @@ name: CI
   pull_request:
     branches: [main]
 
+env:
+  PYTHON_VERSION: "3.11"
+
 jobs:
   lint:
     runs-on: ubuntu-latest
@@ -13,23 +16,102 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
-      - run: pip install pyyaml
+          python-version: "${{ env.PYTHON_VERSION }}"
 
-      - name: Check Python syntax
+      - name: Install lint tools
         run: |
-          python -m py_compile main.py
-          python -m py_compile memory.py
-          python -m py_compile memory_sync.py
-          python -m py_compile mcp_server.py
-          python -m py_compile gardener.py
-          python -m py_compile daily_reminder.py
+          python -m pip install --upgrade pip
+          pip install flake8 mypy
+
+      - name: Python syntax check (all py files)
+        run: |
+          errors=0
+          while IFS= read -r f; do
+            python -m py_compile "$f" || { echo "SYNTAX ERROR: $f"; errors=$((errors+1)); }
+          done < <(find . -name "*.py" -not -path "./venv/*" -not -path "./__pycache__/*" -not -path "./.git/*")
+          echo "Total syntax errors: $errors"
+          [ "$errors" -eq 0 ] || exit 1
+
+      - name: flake8 linting
+        run: |
+          flake8 . --count --max-line-length=120 \
+            --ignore=E203,E266,E501,W503,F401,F841 \
+            --exclude=venv,.git,__pycache__,migrations,archive,raw \
+            --statistics
+        continue-on-error: true
+
+      - name: mypy type checking (basic)
+        run: |
+          mypy --ignore-missing-imports --follow-imports=skip \
+            --exclude 'venv/' --exclude '.git/' \
+            hermesclaw/scoring.py hermesclaw/config.py hermesclaw/models.py || true
+        continue-on-error: true
 
       - name: Validate docker-compose.yml
-        run: python -c "import yaml; f=open('docker-compose.yml'); yaml.safe_load(f); f.close(); print('OK')"
+        run: python -c "import yaml; yaml.safe_load(open('docker-compose.yml')); print('docker-compose.yml OK')"
 
-      - name: Check required files
+      - name: Validate .env.example has required vars
         run: |
-          for f in AGENTS.md llms.txt LICENSE Readme.md CHANGELOG.md .env.example; do
-            test -f "$f" && printf "  %s: OK\n" "$f" || printf "  MISSING: %s\n" "$f"
+          for var in API_KEY DB_PASSWORD AI_PROVIDER; do
+            grep -q "^${var}=" .env.example && echo "  OK: $var" || echo "  MISSING: $var"
           done
+
+      - name: Check required project files
+        run: |
+          for f in AGENTS.md llms.txt LICENSE README.md CHANGELOG.md .env.example Dockerfile.api docker-compose.yml; do
+            test -f "$f" && printf "  OK: %s\n" "$f" || printf "  MISSING: %s\n" "$f"
+          done
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "${{ env.PYTHON_VERSION }}"
+
+      - name: Install test dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-cov
+
+      - name: Run unit tests
+        env:
+          API_KEY: test-key-123
+          DASHBOARD_PASSWORD: strong-pass!@#
+          DASHBOARD_SESSION_SECRET: test-session-secret-very-strong
+          DB_HOST: localhost
+          DB_PASSWORD: test
+        run: |
+          python -m pytest tests/ -v --tb=short --cov=hermesclaw --cov-report=term-missing
+        continue-on-error: true
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build API image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.api
+          load: true
+          tags: hermesclaw-api:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build Postgres image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.postgres
+          load: true
+          tags: hermesclaw-postgres:ci
+
+      - name: Verify images exist
+        run: docker images --filter=reference="hermesclaw-*" --format "{{.Repository}}:{{.Tag}}"

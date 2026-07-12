@@ -1,5 +1,5 @@
 """
-MCP Server: 15 tools exposing all HermesClawZero capabilities to any MCP client.
+MCP Server: 17 tools exposing all HermesClawZero capabilities to any MCP client.
 """
 import sys, json, os, requests
 from mcp.server.fastmcp import FastMCP
@@ -132,6 +132,20 @@ def dashboard_stats():
         "tiers": d.get("tier_stats", {}),
         "version": d.get("version_info", {}),
     }
+
+# ── BI-TEMPORAL ──
+
+@mcp.tool()
+def why_memory(page_id: int):
+    """Bi-temporal explanation: show what a memory superseded, what superseded it, and its version history."""
+    return _get_json(f"/why/{page_id}")
+
+
+@mcp.tool()
+def bi_timeline(scope_id: str = None, limit: int = 50, days_back: int = None):
+    """Bi-temporal timeline: show all memory changes (supersessions, edits, new) over time."""
+    return _get_json("/timeline", scope_id=scope_id, limit=limit, days_back=days_back)
+
 
 if __name__ == "__main__":
     mcp.run()

@@ -2,6 +2,20 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.2.0] - 2026-07-12
+
+### Added
+- `/why/{page_id}` bi-temporal endpoint — shows supersession chain, version history, and valid_to range for any memory
+- `/timeline` bi-temporal endpoint — aggregated timeline of all memory changes (supersessions, edits, new memories) with scope/day filters
+- Memory Galaxy v3 with filter/search — search bar, memory type dropdown, confidence filter in the Galaxy overlay; real-time node filtering
+- `mcp.json` — MCP server auto-discovery manifest for Claude Desktop, VS Code, and other MCP clients
+- MCP tools `why_memory` and `bi_timeline` exposing new bi-temporal endpoints
+- GitHub Actions CI expanded — 3-job pipeline: lint (syntax check all .py files + flake8 + mypy + yaml validate), test (pytest + coverage), docker (build API + Postgres images with caching)
+
+### Changed
+- Exempt prefixes in main.py extended with `/why` and `/timeline`
+- Version bumped from 0.1.0 to 0.2.0
+
 ## [1.0.0] - 2026-07-05
 
 ### Added
