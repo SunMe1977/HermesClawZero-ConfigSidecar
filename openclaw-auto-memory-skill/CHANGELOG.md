@@ -1,5 +1,19 @@
 # Changelog
 
+## 2.3.0 (2026-07-12)
+
+### Added
+- **Bi-temporal endpoints** — `/why/{id}` shows supersession chain + version history; `/timeline` shows all memory changes over time
+- **Memory Galaxy v3** — search bar, memory type dropdown, confidence filter in the Galaxy overlay with real-time node filtering
+- **MCP auto-discovery** — `mcp.json` manifest for Claude Desktop, VS Code, Cursor; 20 MCP tools total
+- **GitHub Actions CI** — 3-job pipeline: lint (syntax+flake8+mypy), test (pytest+coverage), docker build
+- **Expanded MCP tools** — `why_memory`, `bi_timeline` MCP tools for bi-temporal queries
+
+### Changed
+- AGENTS.md updated to v0.2.0 spec (32 lines, compact API table)
+- llms.txt updated with all new features
+- GitHub topics: +fastapi, +docker, +knowledge-graph, +ollama, +chat-memory, +semantic-search (19 total)
+
 ## 2.2.0 (2026-07-12)
 
 ### Added
