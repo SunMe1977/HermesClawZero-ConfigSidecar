@@ -9,22 +9,16 @@ BASE = os.getenv("MCP_BASE_URL", "http://localhost:8010")
 KEY = os.getenv("API_KEY", "change_me_in_env")
 _AUTH = None  # lazy
 
-def _get():
-    global _AUTH
-    if _AUTH is None:
-        pw = os.getenv("DASHBOARD_PASSWORD", "HermesDash!2026")
-        import base64
-        raw = f"admin:{pw}".encode()
-        _AUTH = base64.b64encode(raw).decode()
-    return {"Authorization": f"Basic {_AUTH}"}
+def _headers():
+    return {"X-API-Key": KEY, "Content-Type": "application/json"}
 
 def _get_json(path, **params):
-    r = requests.get(f"{BASE}{path}", headers=_get(), params={"key": KEY, **params}, timeout=15)
+    r = requests.get(f"{BASE}{path}", headers=_headers(), params=params, timeout=15)
     r.raise_for_status()
     return r.json()
 
 def _post_json(path, data=None, **params):
-    r = requests.post(f"{BASE}{path}", headers=_get(), params={"key": KEY, **params},
+    r = requests.post(f"{BASE}{path}", headers=_headers(), params=params,
                       json=data or {}, timeout=30)
     r.raise_for_status()
     return r.json()
