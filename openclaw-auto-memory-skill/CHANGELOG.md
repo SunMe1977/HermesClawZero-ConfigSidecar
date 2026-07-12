@@ -1,5 +1,24 @@
 # Changelog
 
+## 2.1.0 (2026-07-12)
+
+### Added
+- **Ebbinghaus forgetting-curve decay** — `R=e^(-t/S)`, stability grows per spacing effect
+- **Deterministic Conflict Resolver** — ADD/NOOP/INVALIDATE via token Jaccard + embedding cosine
+- **Bi-temporal validity** — `valid_to`/`superseded_by`, superseded facts keep history
+- **Interaction-aware reinforcement** — capture=1.0, retrieve=0.15, nudge=0.10
+- **7-term hybrid score** — vector + lexical + retention + importance + recency + frequency - staleness
+- **10K-scale PG tuning** — shared_buffers=1GB, work_mem=64MB, random_page_cost=1.1
+- **Dynamic HNSW ef_search** — per query type (hybrid=80, vector=40, high_recall=400)
+- **Dashboard keyset pagination** — cursor-based statt OFFSET
+- **`/ask` Q&A endpoint** — natural language → vector + GraphRAG → LLM synthesis
+- **`/export` endpoint** — JSON/Markdown backup with graph entities
+
+### Changed
+- Optimizer: Ebbinghaus decay archive at retention<0.05 statt flat confidence*0.995
+- Search: SQL CTE hybrid score (kein Python merge/sort), 7-term weights
+- Capture pipeline: Conflict Resolver ersetzt simple find_similar_page
+
 ## 1.6.0 (2026-07-11)
 
 ### Added
