@@ -3,6 +3,7 @@
 import json
 import logging
 import math
+import hashlib
 import ollama
 from fastapi import HTTPException
 from hermesclaw.config import OLLAMA_HOST, OPENROUTER_DEGRADED_MESSAGE
@@ -142,15 +143,15 @@ def _capture_sync(
                             """INSERT INTO pages (
                                 content, memory_type, importance, confidence, frequency,
                                 sentiment, source, ttl_days, scope_id, chat_id,
-                                stability, last_access, updated_at, last_used
-                            ) VALUES (%s, %s, %s, %s, 1, %s, %s, %s, %s, %s, %s, NOW(), NOW(), NOW())
+                                stability, content_hash, last_access, updated_at, last_used
+                            ) VALUES (%s, %s, %s, %s, 1, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW(), NOW())
                             RETURNING id""",
                             (
                                 capture_text, meta["memory_type"],
                                 meta["importance"], meta["confidence"],
                                 meta["sentiment"], meta["source"], meta["ttl_days"],
                                 capture_scope_id, derive_chat_id(chat_id, capture_scope_id),
-                                initial_stability,
+                                initial_stability, hashlib.sha256(capture_text.encode()).hexdigest(),
                             ),
                         )
                         new_id = cur.fetchone()[0]
@@ -188,15 +189,15 @@ def _capture_sync(
                 """INSERT INTO pages (
                     content, memory_type, importance, confidence, frequency,
                     sentiment, source, ttl_days, scope_id, chat_id,
-                    stability, last_access, updated_at, last_used
-                ) VALUES (%s, %s, %s, %s, 1, %s, %s, %s, %s, %s, %s, NOW(), NOW(), NOW())
+                    stability, content_hash, last_access, updated_at, last_used
+                ) VALUES (%s, %s, %s, %s, 1, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW(), NOW())
                 RETURNING id""",
                 (
                     capture_text, meta["memory_type"],
                     meta["importance"], meta["confidence"],
                     meta["sentiment"], meta["source"], meta["ttl_days"],
                     capture_scope_id, derive_chat_id(chat_id, capture_scope_id),
-                    initial_stability,
+                    initial_stability, hashlib.sha256(capture_text.encode()).hexdigest(),
                 ),
             )
             page_id = cur.fetchone()[0]

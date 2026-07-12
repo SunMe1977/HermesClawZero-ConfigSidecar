@@ -153,6 +153,10 @@ def ensure_phase1_schema() -> None:
             cur.execute("ALTER TABLE pages ADD COLUMN IF NOT EXISTS valid_to TIMESTAMP")
             cur.execute("ALTER TABLE pages ADD COLUMN IF NOT EXISTS superseded_by INT")
 
+            # ── content_hash for idempotent imports / dedup ──
+            cur.execute("ALTER TABLE pages ADD COLUMN IF NOT EXISTS content_hash TEXT")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_pages_content_hash ON pages(content_hash)")
+
             cur.execute(
                 """
                 CREATE TABLE IF NOT EXISTS pages_archive (
