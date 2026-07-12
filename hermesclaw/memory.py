@@ -421,7 +421,7 @@ def _search_sync(
             vector_rows = []
             if qemb_str is not None:
                 cur.execute(
-                    """
+                    f"""
                     SELECT p.id, p.content, p.memory_type, p.importance, p.confidence, p.frequency,
                            EXTRACT(EPOCH FROM (NOW() - COALESCE(p.last_retrieved, p.last_used, p.created_at))) / 86400.0 AS age_days,
                            e.embedding <-> %s::vector AS vector_distance
@@ -532,6 +532,31 @@ def _search_sync(
 def rerank(query: str, items: list[dict]) -> list[dict]:
     if not items:
         return items
+    
+    # Find available LLM model
+    model = None
+    llm_client = None
+    for host in ["http://host.docker.internal:11434", OLLAMA_HOST or "http://host.docker.internal:11435"]:
+        try:
+            c = ollama.Client(host=host)
+            tags = c.list()
+            for m in tags.models:
+                if "embed" not in (m.model or "") and "llama" in (m.model or "").lower():
+                    model, llm_client = m.model, c
+                    break
+            if not model:
+                for m in tags.models:
+                    if "embed" not in (m.model or ""):
+                        model, llm_client = m.model, c
+                        break
+            if model:
+                break
+        except Exception:
+            continue
+    
+    if not model or not llm_client:
+        return items
+
     prompt = (
         f"Query: {query}\n\nRe-rank these items by relevance (0-10 score), "
         f"return JSON: [{{'id': id, 'score': score}}]\n"
@@ -539,8 +564,8 @@ def rerank(query: str, items: list[dict]) -> list[dict]:
     for item in items:
         prompt += f"ID: {item['id']}, Content: {item['content'][:200]}\n"
 
-    resp = client.generate(model="llama3.1:8b", prompt=prompt)
     try:
+        resp = llm_client.generate(model=model, prompt=prompt)
         ranked = json.loads(resp["response"])
         ranked.sort(key=lambda x: x["score"], reverse=True)
         id_map = {r["id"]: r for r in items}

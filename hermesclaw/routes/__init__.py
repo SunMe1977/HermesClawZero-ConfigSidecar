@@ -34,6 +34,7 @@ from hermesclaw.dedup import find_and_merge_duplicates
 from hermesclaw.reflection import analyze_memories
 from hermesclaw.episodic import ensure_episodic_schema, record_episode, get_timeline
 from hermesclaw.update import get_update_status, run_update, get_version_info
+from hermesclaw.ask import ask_question
 
 logger = logging.getLogger("hermesclaw.routes")
 
@@ -506,6 +507,13 @@ async def graph_rag(q: str = ""):
     with connect_db() as conn:
         results = graph_rag_search(conn, entities, query_text=q)
     return {"status": "ok", "results": results, "query_entities": entities}
+
+
+@router.get("/ask", dependencies=[Depends(get_current_username)])
+async def ask(q: str = "", scope_id: str | None = None):
+    """Natural language question → vector + graph retrieval → LLM answer."""
+    result = await run_in_threadpool(lambda: ask_question(q, scope_id=scope_id))
+    return result
 
 
 @router.get("/optimizer/dry_run", dependencies=[Depends(get_current_username)])
