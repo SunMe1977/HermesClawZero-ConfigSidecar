@@ -1,7 +1,8 @@
-# pgvector/pgvector:0.7.4-pg15
-# Not :latest — prevents silent PG major version upgrades
-# PG15 matches existing volume from previous pgvector image
-FROM pgvector/pgvector:0.7.4-pg15
+# Usage: docker compose build --build-arg PG_BASE=pg17 db
+#   pg17 = new installs (default)
+#   pg15 = existing Windows volume (PG15 data)
+ARG PG_BASE=pg17
+FROM pgvector/pgvector:0.7.4-${PG_BASE}
 
 # Port
 EXPOSE 5432

@@ -18,13 +18,13 @@ class DockerfilePgvectorPinnedTest(unittest.TestCase):
 
     def test_pgvector_image_is_pinned(self):
         content = _read("Dockerfile.postgres")
-        self.assertIn("pgvector/pgvector:", content)
-        self.assertNotIn("pgvector:latest", content,
-            ":latest causes silent PG major version upgrades → data loss!")
-        for line in content.splitlines():
-            if "FROM pgvector/pgvector:" in line and "latest" not in line:
-                return
-        self.fail("Must pin pgvector to a specific version, not :latest")
+        # Must use ARG + FROM with pinned version, not :latest
+        self.assertIn("pgvector/pgvector:", content,
+            "Dockerfile.postgres must use pgvector/pgvector:<tag>")
+        self.assertNotIn("FROM pgvector/pgvector:latest", content,
+            "pgvector :latest causes silent PG major version upgrades -> data loss!")
+        self.assertIn("ARG PG_BASE=", content,
+            "Dockerfile.postgres must use ARG PG_BASE for pg version selection")
 
 
 # ── 2. Auto-recovery: pages < 100 triggers Hermes state.db import ──
