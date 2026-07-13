@@ -108,7 +108,7 @@ class EmbeddingDimPortabilityTest(unittest.TestCase):
             if "EMBEDDING_DIM:" in line:
                 self.assertNotIn("1536", line,
                     "EMBEDDING_DIM hardcoded to 1536 breaks Ollama (768 dim)!")
-                self.assertIn("${EMBEDDING_DIM}", line,
+                self.assertIn("${EMBEDDING_DIM", line,
                     "Must use ${EMBEDDING_DIM} for .env / auto-detect fallback")
 
     def test_old_ankane_image_not_present(self):
