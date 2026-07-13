@@ -66,17 +66,32 @@ def run_update() -> dict:
     if not status_before.get("available"):
         return {"updated": False, "status": status_before, "message": "already up to date"}
 
-    ok_pull, out_pull, err_pull = _run_command(
-        ["git", "pull", "--ff-only", UPDATE_REMOTE, UPDATE_BRANCH],
+    # Use fetch + reset --hard instead of pull --ff-only
+    # This handles divergent branches (e.g. after manual commits in the container)
+    ok_fetch, out_fetch, err_fetch = _run_command(
+        ["git", "fetch", UPDATE_REMOTE, UPDATE_BRANCH],
         timeout=120,
     )
-    if not ok_pull:
+    if not ok_fetch:
         return {
             "updated": False,
             "status": status_before,
-            "message": "git pull failed",
-            "stdout": out_pull,
-            "stderr": err_pull,
+            "message": "git fetch failed",
+            "stdout": out_fetch,
+            "stderr": err_fetch,
+        }
+
+    ok_reset, out_reset, err_reset = _run_command(
+        ["git", "reset", "--hard", f"{UPDATE_REMOTE}/{UPDATE_BRANCH}"],
+        timeout=30,
+    )
+    if not ok_reset:
+        return {
+            "updated": False,
+            "status": status_before,
+            "message": "git reset failed",
+            "stdout": out_reset,
+            "stderr": err_reset,
         }
 
     restart_result = {"ran": False, "ok": True, "stdout": "", "stderr": ""}
