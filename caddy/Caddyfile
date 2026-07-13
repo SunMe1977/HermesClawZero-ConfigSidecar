@@ -12,8 +12,8 @@
         reverse_proxy api1:8100 api2:8100 {
             lb_policy round_robin
             health_uri /healthz
-            health_interval 10s
-            health_timeout 3s
+            health_interval 2s
+            health_timeout 2s
         }
     }
 
