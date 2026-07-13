@@ -67,6 +67,8 @@ services:
       DASHBOARD_SESSION_SECRET: ${DASHBOARD_SESSION_SECRET:-DagD2b1Jg+ZSzVoaaL5/MdzcNJvro4jnUpIXi9Fm2S4=}
       AI_PROVIDER: ${COMPOSE_AI_PROVIDER:-${AI_PROVIDER:-openrouter}}
       EMBEDDING_PROVIDER: auto
+      EMBEDDING_DIM: 1536
+      ALLOW_EMBEDDING_SCHEMA_RESET: "true"
       HERMES_DB_PATH: /hermes_state/state.db
       UPDATE_REPO_DIR: /app/repo
       UPDATE_REMOTE: ${AUTO_UPDATE_REMOTE:-origin}
