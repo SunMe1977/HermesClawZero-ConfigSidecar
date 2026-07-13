@@ -192,11 +192,11 @@ if (-not [string]::IsNullOrWhiteSpace($ANTHROPIC_API_KEY)) { $lines += "ANTHROPI
 if (-not [string]::IsNullOrWhiteSpace($OPENROUTER_API_KEY)) { $lines += "OPENROUTER_API_KEY=$OPENROUTER_API_KEY" }
 
 $lines += @(
-    "API_URL=https://openclawmemwin.postarmory.com"
     "API_KEY=$API_KEY"
     "SYNC_DIR=$syncDir"
     "DB_PASSWORD=$DB_PASSWORD"
     "DASHBOARD_PASSWORD=$DASHBOARD_PASS"
+    "DASHBOARD_SESSION_SECRET=$( -join ((65..90) + (97..122) + (48..57) | Get-Random -Count 32 | ForEach-Object { [char]$_ }) )"
     "TELEGRAM_BOT_TOKEN=$TELEGRAM_TOKEN"
     "TELEGRAM_CHAT_ID=$TELEGRAM_CHAT_ID"
     "APP_VERSION=$APP_VERSION"
@@ -223,8 +223,8 @@ if ($provider -eq "ollama") {
     Write-Host "[INFO] Starting Ollama container..." -ForegroundColor Cyan
     docker compose up -d ollama
     Start-Sleep -Seconds 10
-    docker exec gbrain-ollama ollama pull nomic-embed-text
-    docker exec gbrain-ollama ollama pull llama3.1
+    docker exec hc-sidecar-ollama ollama pull nomic-embed-text
+    docker exec hc-sidecar-ollama ollama pull llama3.1
 }
 
 # 6. Skills
