@@ -36,12 +36,38 @@ services:
       retries: 8
       start_period: 10s
 
+  pgbouncer:
+    image: bitnami/pgbouncer:latest
+    container_name: gbrain-pgbouncer
+    restart: unless-stopped
+    ports:
+      - "6432:6432"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGBOUNCER_DATABASE: gbrain
+      PGBOUNCER_PORT: 6432
+      PGBOUNCER_MAX_CLIENT_CONN: 300
+      PGBOUNCER_DEFAULT_POOL_SIZE: 50
+      PGBOUNCER_MAX_DB_CONNECTIONS: 100
+      PGBOUNCER_POOL_MODE: transaction
+      PGBOUNCER_AUTH_TYPE: scram-sha-256
+      PGBOUNCER_QUERY_TIMEOUT: 30
+      POSTGRESQL_USERNAME: postgres
+      POSTGRESQL_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+      POSTGRESQL_DATABASE: gbrain
+      POSTGRESQL_HOST: db
+      POSTGRESQL_PORT: 5432
+
   api:
     build:
       context: .
       dockerfile: Dockerfile.api
     restart: unless-stopped
     depends_on:
+      pgbouncer:
+        condition: service_started
       db:
         condition: service_healthy
     env_file:
@@ -53,11 +79,14 @@ services:
     ports:
       - "8010:8010"
     environment:
-      DB_HOST: db
-      DB_PORT: 5432
+      DB_HOST: pgbouncer
+      DB_PORT: 6432
       DB_NAME: gbrain
       DB_USER: postgres
       DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+      DB_POOL_MIN: ${DB_POOL_MIN:-10}
+      DB_POOL_MAX: ${DB_POOL_MAX:-100}
+      DB_POOL_TIMEOUT: ${DB_POOL_TIMEOUT:-30}
       API_URL: ${API_URL}
       API_KEY: ${API_KEY:?API_KEY is required}
       # Runtime selection priority:

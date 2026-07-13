@@ -88,7 +88,7 @@ def _capture_sync(
         emb_str = embedding_to_pgvector_literal(emb)
         with connect_db() as conn:
             with conn.cursor() as cur:
-                cur.execute("SET hnsw.ef_search = 200")
+                cur.execute("SET hnsw.ef_search = 400")
                 cur.execute(
                     """
                     SELECT p.id, p.content, p.memory_type, p.importance, p.confidence, p.frequency,
@@ -162,27 +162,23 @@ def _capture_sync(
                         )
                         conn.commit()
                 page_id = new_id
-                # Still store the embedding below
-                try:
-                    emb_str = embedding_to_pgvector_literal(emb)
-                    with connect_db() as conn:
-                        with conn.cursor() as cur:
-                            cur.execute(
-                                "INSERT INTO embeddings (page_id, embedding) VALUES (%s, %s::vector)",
-                                (page_id, emb_str),
-                            )
-                            conn.commit()
-                except Exception:
-                    pass
-                return {
-                    "status": "superseded",
-                    "page_id": page_id,
-                    "supersedes": target_id,
-                    "reason": reason,
-                    "score": meta["score"],
-                }
+    # ── Queue async embedding (non-blocking at 2M scale) ──
+    from hermesclaw.embedding_queue import enqueue, ensure_worker
+    ensure_worker()
+    try:
+        enqueue(page_id, capture_text)
+    except Exception:
+        pass
 
-    # ── ADD: insert new memory with initial stability ──
+    return {
+        "status": "superseded",
+        "page_id": page_id,
+        "supersedes": target_id,
+        "reason": reason,
+        "score": meta["score"],
+    }
+
+# ── ADD: insert new memory with initial stability ──
     with connect_db() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -203,38 +199,13 @@ def _capture_sync(
             page_id = cur.fetchone()[0]
             conn.commit()
 
+    # ── Queue async embedding (non-blocking at 2M scale) ──
+    from hermesclaw.embedding_queue import enqueue, ensure_worker
+    ensure_worker()
     try:
-        emb = generate_embedding(capture_text)
-        emb_str = embedding_to_pgvector_literal(emb)
-        with connect_db() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    "INSERT INTO embeddings (page_id, embedding) VALUES (%s, %s::vector)",
-                    (page_id, emb_str),
-                )
-                conn.commit()
-    except HTTPException as ex:
-        if ex.status_code == 503 and ex.detail == OPENROUTER_DEGRADED_MESSAGE:
-            return {
-                "status": "ok_degraded",
-                "page_id": page_id,
-                "memory_type": meta["memory_type"],
-                "score": meta["score"],
-                "importance": round(meta["importance"], 3),
-                "confidence": round(meta["confidence"], 3),
-                "warning": OPENROUTER_DEGRADED_MESSAGE,
-            }
-        with connect_db() as conn:
-            with conn.cursor() as cur:
-                cur.execute("DELETE FROM pages WHERE id = %s", (page_id,))
-                conn.commit()
-        raise ex
-    except Exception as ex:
-        with connect_db() as conn:
-            with conn.cursor() as cur:
-                cur.execute("DELETE FROM pages WHERE id = %s", (page_id,))
-                conn.commit()
-        raise HTTPException(status_code=500, detail=f"Failed to store embedding: {ex}") from ex
+        enqueue(page_id, capture_text)
+    except Exception:
+        pass
 
     return {
         "status": "ok",
@@ -243,6 +214,8 @@ def _capture_sync(
         "score": meta["score"],
         "importance": round(meta["importance"], 3),
         "confidence": round(meta["confidence"], 3),
+        "sentiment": round(meta["sentiment"], 3),
+        "stability": round(initial_stability, 3),
     }
 
 
@@ -442,8 +415,8 @@ def _search_sync(
     if days_back is not None and days_back > 0:
         days_filter = f" AND COALESCE(p.last_used, p.created_at) >= NOW() - INTERVAL '{days_back} days'"
 
-    # ── HNSW ef_search per query type ──
-    ef_search = {"exact": 400, "high_recall": 200, "hybrid": 80, "vector": 40}.get(search_type, 80)
+    # ── HNSW ef_search per query type (2M-scale) ──
+    ef_search = {"exact": 800, "high_recall": 400, "hybrid": 150, "vector": 80}.get(search_type, 150)
 
     if query.strip() == "":
         with connect_db() as conn:

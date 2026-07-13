@@ -39,8 +39,8 @@ else
     info "Homebrew installed"
 fi
 
-# ── Step 2: Docker ──
-header "2/5  Checking Docker"
+# ── Step 2: Docker / Colima ──
+header "2/5  Checking Docker / Colima"
 
 # Docker CLI may be installed but not in PATH
 _DOCKER=""
@@ -59,15 +59,10 @@ _OSVER="$(sw_vers -productVersion 2>/dev/null || echo "0")"
 _IS_MONTEREY=0; [[ "$_OSVER" =~ ^12\. ]] && _IS_MONTEREY=1
 
 if [[ -z "$_DOCKER" ]]; then
-    # ── No Docker CLI at all ──
-    if [[ $_IS_MONTEREY -eq 1 ]]; then
-        warn "Monterey: installing Docker CLI + Colima (no Docker Desktop needed)…"
-        brew install docker docker-compose colima
-    else
-        warn "Docker not found — installing Docker Desktop via Homebrew …"
-        brew install --cask docker
-    fi
-    # Re-check after install
+    # ── No Docker CLI at all — install Colima + Docker CLI via brew ──
+    warn "Docker not found — installing Colima + docker CLI via Homebrew …"
+    brew install docker docker-compose colima
+    # Re-check
     for _try in "/usr/local/bin/docker" "/opt/homebrew/bin/docker"; do
         [[ -x "$_try" ]] && { _DOCKER="$_try"; break; }
     done
@@ -76,37 +71,48 @@ fi
 if [[ -n "$_DOCKER" ]]; then
     _DIR="$(dirname "$_DOCKER")"
     ! command -v docker &>/dev/null && export PATH="$_DIR:$PATH"
-    info "Docker CLI found: $("$_DOCKER" --version 2>/dev/null || echo "$_DOCKER")"
+    info "Docker CLI: $("$_DOCKER" --version 2>/dev/null || echo "$_DOCKER")"
 
     if docker info &>/dev/null 2>&1; then
         info "Docker daemon running"
     else
+        # Daemon not running — try Colima first, fall back to Docker Desktop
+        if command -v colima &>/dev/null; then
+            warn "Starting Colima (lightweight Docker runtime)…"
+        else
+            warn "Installing Colima via Homebrew …"
+            brew install colima
+        fi
+        # On Monterey, remove incompatible Docker Desktop cask if present
         if [[ $_IS_MONTEREY -eq 1 ]]; then
-            warn "Monterey: starting Colima (Docker runtime without Docker Desktop)…"
-            if ! command -v colima &>/dev/null; then
-                warn "Installing Colima…"; brew install colima
-            fi
-            # Uninstall broken Docker Desktop cask if present
             if brew list --cask docker &>/dev/null 2>&1; then
                 warn "Removing incompatible Docker Desktop cask…"
                 brew uninstall --cask docker 2>/dev/null || true
             fi
-            colima start --cpu 2 --memory 4
-            # Wait for daemon
-            for i in $(seq 1 30); do
-                docker info &>/dev/null && { info "Colima ready"; break; }
-                sleep 2
-            done
-        else
-            warn "Launching Docker Desktop…"
-            open -a Docker 2>/dev/null || true
-            for i in $(seq 1 60); do
-                docker info &>/dev/null && { info "Docker Desktop ready"; break; }
-                sleep 2
-            done
         fi
+        colima start --cpu 2 --memory 4
+        for i in $(seq 1 30); do
+            docker info &>/dev/null && { info "Colima ready"; break; }
+            sleep 2
+        done
+
+        # If Colima still not ready, fall back to Docker Desktop
         if ! docker info &>/dev/null 2>&1; then
-            err "Docker still not running after 120s. Check: colima status (Monterey) or launch Docker Desktop manually."
+            warn "Colima not available — falling back to Docker Desktop …"
+            if ! command -v docker &>/dev/null || ! docker info &>/dev/null 2>&1; then
+                if [[ $_IS_MONTEREY -eq 0 ]]; then
+                    warn "Launching Docker Desktop…"
+                    open -a Docker 2>/dev/null || true
+                    for i in $(seq 1 60); do
+                        docker info &>/dev/null && { info "Docker Desktop ready"; break; }
+                        sleep 2
+                    done
+                fi
+            fi
+        fi
+
+        if ! docker info &>/dev/null 2>&1; then
+            err "No Docker runtime available. Try: colima start  or  open -a Docker"
             exit 1
         fi
     fi

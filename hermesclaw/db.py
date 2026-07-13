@@ -264,8 +264,8 @@ def ensure_phase1_schema() -> None:
 
             # ── pgvector HNSW index for fast ANN search ──
             try:
-                cur.execute("CREATE INDEX IF NOT EXISTS idx_embeddings_hnsw ON embeddings USING hnsw (embedding vector_cosine_ops) WITH (m=16, ef_construction=200)")
-                logger.info("[SCHEMA] HNSW index created/verified")
+                cur.execute("CREATE INDEX IF NOT EXISTS idx_embeddings_hnsw ON embeddings USING hnsw (embedding vector_cosine_ops) WITH (m=32, ef_construction=400)")
+                logger.info("[SCHEMA] HNSW index created/verified (m=32, ef_construction=400)")
             except Exception:
                 # HNSW requires pgvector >= 0.5; fall back to IVFFlat
                 try:

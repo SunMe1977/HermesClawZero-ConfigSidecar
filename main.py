@@ -211,6 +211,8 @@ def startup_event():
         raise RuntimeError(f"Startup failed during database initialization: {ex}") from ex
 
     # Start background workers
+    from hermesclaw.embedding_queue import ensure_worker
+    ensure_worker()  # starts async embedding batch processor
     threading.Thread(target=decay_loop, daemon=True).start()
     if AUTO_UPDATE_ENABLED:
         threading.Thread(target=auto_update_loop, daemon=True).start()
