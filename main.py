@@ -178,7 +178,8 @@ def startup_event():
         except Exception as ex:
             logger.warning("[IMPORT] Non-fatal error: %s", ex)
 
-        # Auto-recover: restore from pre-rebuild backup first, else Hermes state.db
+        # Auto-recover: restore from pre-rebuild backup first, else Hermes state.db,
+        # else restore from pages_archive (previous optimizer decay).
         # Handles the case where docker rebuild wipes the DB volume.
         # Runs in background thread to avoid blocking server startup.
         try:
@@ -212,7 +213,7 @@ def startup_event():
                                 restored = json.loads(result.stdout.strip().split("\n")[-1])
                                 if restored.get("restored", 0) > 0:
                                     logger.info("[RECOVERY] Pre-rebuild backup restored %d pages!", restored["restored"])
-                                    return  # Skip state.db import — backup was better
+                                    return  # Skip fallbacks — backup was better
                             else:
                                 logger.warning("[RECOVERY] Backup restore stderr: %s", result.stderr[:500])
                         except Exception as ex:
@@ -220,7 +221,32 @@ def startup_event():
                     else:
                         logger.info("[RECOVERY] pre_rebuild_backup.py not found — skipping backup restore")
 
-                    # Step 2: Fallback — import Hermes state.db
+                    # Step 2: Restore from pages_archive (previous optimizer decay)
+                    try:
+                        with connect_db() as conn:
+                            with conn.cursor() as cur:
+                                cur.execute("""
+                                    INSERT INTO pages (id, content, memory_type, importance, confidence,
+                                                       frequency, source, scope_id, created_at, updated_at)
+                                    SELECT DISTINCT ON (pa.page_id)
+                                        pa.page_id, pa.content,
+                                        COALESCE(pa.memory_type, 'conversation'),
+                                        COALESCE(pa.importance, 0.5),
+                                        COALESCE(pa.confidence, 0.7),
+                                        COALESCE(pa.frequency, 1),
+                                        pa.source, pa.scope_id,
+                                        pa.created_at, pa.updated_at
+                                    FROM pages_archive pa
+                                    WHERE NOT EXISTS (SELECT 1 FROM pages p WHERE p.id = pa.page_id)
+                                    ORDER BY pa.page_id, pa.archived_at DESC
+                                """)
+                                restored = cur.rowcount
+                                conn.commit()
+                                logger.info("[RECOVERY] Restored %d pages from archive!", restored)
+                    except Exception as ex:
+                        logger.warning("[RECOVERY] Archive restore failed (non-fatal): %s", ex)
+
+                    # Step 3: Fallback — import Hermes state.db
                     try:
                         result = subprocess.run(
                             [sys.executable, "/app/repo/migrations/import_from_hermes_db.py",
