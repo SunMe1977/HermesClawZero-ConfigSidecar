@@ -342,7 +342,21 @@
     <h2>🩺 Memory Health & Controls</h2>
     <div class="health-grid">
       <div class="health-item"><span class="health-label">App Version</span><span class="health-value">{{ version_info.version }}</span></div>
-      <div class="health-item"><span class="health-label">Update</span><span class="health-value badge {{ 'badge-yellow' if update_status.get('available') else 'badge-green' }}">{{ "update available" if update_status.get('available') else "up to date" }}</span></div>
+      <div class="health-item"><span class="health-label">Update</span>
+        {% if update_status.get('available') %}
+        <form method="post" action="/update/run_from_dashboard" style="display:inline;margin:0;">
+          <input type="hidden" name="query" value="{{ query }}">
+          <input type="hidden" name="selected_scope" value="{{ active_scope }}">
+          <input type="hidden" name="page" value="{{ page }}">
+          <input type="hidden" name="health_stale_days" value="{{ safe_health_stale_days }}">
+          <input type="hidden" name="health_confidence_threshold" value="{{ safe_health_confidence }}">
+          <input type="hidden" name="health_limit" value="{{ safe_health_limit }}">
+          <button type="submit" class="health-value badge badge-yellow" style="border:none;cursor:pointer;font:inherit;">update available ⬆</button>
+        </form>
+        {% else %}
+        <span class="health-value badge badge-green">up to date ✓</span>
+        {% endif %}
+      </div>
       <div class="health-item"><span class="health-label">Auto Update</span><span class="health-value">{{ "ON" if AUTO_UPDATE_ENABLED else "OFF" }} ({{ AUTO_UPDATE_INTERVAL_SECONDS }}s)</span></div>
       <div class="health-item"><span class="health-label">Pending Review</span><span class="health-value">{{ review.summary.pending_count }}</span></div>
       <div class="health-item"><span class="health-label">Recently Archived</span><span class="health-value">{{ review.summary.recent_archived_count }}</span></div>
@@ -353,16 +367,6 @@
         <span class="tier-badge tier-cold">Cold {{ tier_stats.cold }}</span>
       </span></div>
     </div>
-
-    <form method="post" action="/update/run_from_dashboard" style="margin:10px 0;">
-      <input type="hidden" name="query" value="{{ query }}">
-      <input type="hidden" name="selected_scope" value="{{ active_scope }}">
-      <input type="hidden" name="page" value="{{ page }}">
-      <input type="hidden" name="health_stale_days" value="{{ safe_health_stale_days }}">
-      <input type="hidden" name="health_confidence_threshold" value="{{ safe_health_confidence }}">
-      <input type="hidden" name="health_limit" value="{{ safe_health_limit }}">
-      <button type="submit" class="btn btn-success">Run App Update</button>
-    </form>
 
     <p><a href="/version" class="link">Version JSON</a> · <a href="/update/status" class="link">Update Status</a> · <a href="/graph/entities" target="_blank" class="link link-purple">Knowledge Graph</a> · <a href="/nudge" target="_blank" class="link link-green">Nudge</a></p>
 
