@@ -208,9 +208,14 @@ $lines += @(
     "UPDATE_REPO_DIR=$UPDATE_REPO_DIR"
     "UPDATE_RESTART_COMMAND=$UPDATE_RESTART_COMMAND"
     "HERMES_DB_PATH=$HERMES_DB_PATH"
-    "OPENAI_EMBED_MODEL=$(Get-Input 'OPENAI_EMBED_MODEL' 'OpenAI embedding model' 'text-embedding-3-small')"
-    "OPENROUTER_EMBED_MODEL=$(Get-Input 'OPENROUTER_EMBED_MODEL' 'OpenRouter embedding model' 'text-embedding-3-small')"
-    "GEMINI_EMBED_MODEL=$(Get-Input 'GEMINI_EMBED_MODEL' 'Gemini embedding model' 'models/text-embedding-004')"
+)
+# Only ask for embedding model matching the chosen provider
+$embedModels = @()
+if ($provider -eq "openai" -or $EMBEDDING_PROVIDER -eq "openai") { $embedModels += "OPENAI_EMBED_MODEL=$(Get-Input 'OPENAI_EMBED_MODEL' 'OpenAI embedding model' 'text-embedding-3-small')" }
+if ($provider -eq "openrouter" -or $EMBEDDING_PROVIDER -eq "openrouter") { $embedModels += "OPENROUTER_EMBED_MODEL=$(Get-Input 'OPENROUTER_EMBED_MODEL' 'OpenRouter embedding model' 'text-embedding-3-small')" }
+if ($provider -eq "gemini" -or $EMBEDDING_PROVIDER -eq "gemini" -or $EMBEDDING_PROVIDER -eq "auto") { $embedModels += "GEMINI_EMBED_MODEL=$(Get-Input 'GEMINI_EMBED_MODEL' 'Gemini embedding model' 'models/text-embedding-004')" }
+$lines += $embedModels
+$lines += @(
     "OLLAMA_HOST=http://host.docker.internal:11435"
 )
 
