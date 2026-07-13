@@ -605,7 +605,7 @@
   <div id="galaxyLegend" style="position:fixed; bottom:20px; left:50%; transform:translateX(-50%); z-index:10001; display:flex; gap:20px; flex-wrap:wrap; justify-content:center; pointer-events:none; font-size:12px; color:rgba(200,180,255,0.5);"></div>
 
   <!-- Hover info card -->
-  <div id="galaxyHoverCard" style="display:none; position:fixed; z-index:10002; padding:12px 16px; border-radius:10px; border:1px solid rgba(200,160,255,0.2); background:rgba(10,8,20,0.88); backdrop-filter:blur(12px); color:#ddd; font-size:13px; max-width:260px; pointer-events:none; box-shadow:0 4px 24px rgba(0,0,0,0.6);">
+  <div id="galaxyHoverCard" style="display:none; position:fixed; z-index:10002; padding:14px 18px; border-radius:10px; border:1px solid rgba(200,160,255,0.2); background:rgba(10,8,20,0.88); backdrop-filter:blur(12px); color:#ddd; font-size:13px; max-width:380px; min-width:200px; pointer-events:none; box-shadow:0 4px 24px rgba(0,0,0,0.6); word-wrap:break-word;">
     <div id="ghcTenant" style="font-size:11px; color:#a78bfa; font-weight:600; margin-bottom:4px;"></div>
     <div id="ghcContent" style="font-size:12px; color:#e8e0ff; line-height:1.4; margin-bottom:6px;"></div>
     <div id="ghcMeta" style="font-size:10px; color:rgba(200,180,255,0.5); display:flex; gap:10px;"></div>
@@ -686,6 +686,7 @@ _startAutoRefresh();
 const GALAXY_DATA = {
   tenants: {{ galaxy_tenants|tojson }},
   total: {{ galaxy_total }},
+  items: {{ galaxy_items|tojson }},
   highConf: {{ galaxy_high_conf }},
   medConf: {{ galaxy_med_conf }},
   lowConf: {{ galaxy_low_conf }},
@@ -797,20 +798,23 @@ function buildOrbits() {
     }
     const color = COLORS[i % COLORS.length];
     const radius = 0.12 + (i / Math.max(1, n - 1)) * 0.38;
+    const tenantItems = (GALAXY_DATA.items || []).filter(it => it.scope === t.scope);
     const nodeCount = Math.max(3, Math.min(40, Math.round((t.count / maxMem) * 30) + 5));
     const nodes = [];
 
     for (let j = 0; j < nodeCount; j++) {
+      const item = tenantItems[j] || null;
       const theta = (j / nodeCount) * PI2 + Math.random() * 0.1;
       nodes.push({
         theta, radiusOffset: (Math.random() - 0.5) * 0.02,
         size: Math.random() * 3 + 1.5,
         pulsePhase: Math.random() * PI2, pulseSpeed: 0.005 + Math.random() * 0.02,
-        trail: [],  // glow trail positions
-        label: `Memory #${(i * 100) + j}`,
+        trail: [],
+        label: item ? item.content.slice(0, 60) : '…',
         tenant: t.name,
-        ts: new Date(Date.now() - Math.random() * 7 * 86400000).toLocaleDateString(),
-        tags: ['auto', 'capture', t.name.slice(0,3)],
+        ts: item ? item.ts : '',
+        tags: item ? item.tags : [],
+        item,
       });
     }
 
@@ -1112,11 +1116,15 @@ function drawGalaxy(time) {
         const con = document.getElementById('ghcContent');
         const met = document.getElementById('ghcMeta');
         if (ten) ten.textContent = `◈ ${o.name}`;
-        if (con) con.textContent = node.label;
-        if (met) met.innerHTML = `<span>🕐 ${node.ts}</span><span>🏷 ${node.tags.join(', ')}</span>`;
+        if (con) {
+          const fullText = node.item ? node.item.content : node.label;
+          con.textContent = fullText;
+          con.title = fullText;
+        }
+        if (met) met.innerHTML = `<span>🕐 ${node.ts}</span><span>🏷 ${(node.tags || []).join(', ')}</span><span>${node.item ? '⭐ ' + node.item.importance.toFixed(2) : ''}</span>`;
         card.style.display = 'block';
-        card.style.left = Math.min(px + 20, W - 280) + 'px';
-        card.style.top = Math.min(py - 20, H - 100) + 'px';
+        card.style.left = Math.min(px + 20, W - 320) + 'px';
+        card.style.top = Math.min(py - 20, H - 120) + 'px';
         card.style.opacity = '1';
       }
     }
