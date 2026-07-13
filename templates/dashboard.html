@@ -343,6 +343,7 @@
     <div class="health-grid">
       <div class="health-item"><span class="health-label">App Version</span><span class="health-value">{{ version_info.version }}</span></div>
       <div class="health-item"><span class="health-label">Update</span>
+        <span id="updateBadge">
         {% if update_status.get('available') %}
         <form method="post" action="/update/run_from_dashboard" style="display:inline;margin:0;">
           <input type="hidden" name="query" value="{{ query }}">
@@ -356,6 +357,7 @@
         {% else %}
         <span class="health-value badge badge-green">up to date ✓</span>
         {% endif %}
+        </span>
       </div>
       <div class="health-item"><span class="health-label">Auto Update</span><span class="health-value">{{ "ON" if AUTO_UPDATE_ENABLED else "OFF" }} ({{ AUTO_UPDATE_INTERVAL_SECONDS }}s)</span></div>
       <div class="health-item"><span class="health-label">Pending Review</span><span class="health-value">{{ review.summary.pending_count }}</span></div>
@@ -625,13 +627,35 @@ function mergeSelected() {
   var f = new FormData(); ids.forEach(id => f.append('source_ids', id));
   if(!confirm('Merge ' + ids.length + ' memories into one?')) return;
   fetch('/memory/merge', {method:'POST', body:f})
-    .then(r=>r.json()).then(d=>{ if(d.status==='ok') showToast('✅ Merged ' + ids.length + ' memories'); location.reload() }).catch(()=>{});
+    .then(r=>r.json()).then(d=>{ if(d.status==='ok') showToast('Merged ' + ids.length + ' memories'); location.reload() }).catch(()=>{});
 }
 function showToast(msg, type) {
   var t = document.createElement('div'); t.className = 'toast' + (type==='error'?' toast-error':' toast-success');
   t.textContent = msg; document.getElementById('toastContainer').appendChild(t);
   setTimeout(()=>{ t.style.opacity='0'; setTimeout(()=>t.remove(),300); }, 3000);
 }
+
+// Async update check — fetch git status without blocking page render
+setTimeout(function checkUpdate() {
+  fetch('/update/status')
+    .then(r=>r.json())
+    .then(d=>{
+      var avail = d.update && d.update.available;
+      var badge = document.getElementById('updateBadge');
+      if (!badge) return;
+      if (avail) {
+        badge.innerHTML = '<form method=post action=/update/run_from_dashboard style=display:inline;margin:0;>' +
+          '<input type=hidden name=query value="">' +
+          '<input type=hidden name=selected_scope value="">' +
+          '<input type=hidden name=page value=1>' +
+          '<input type=hidden name=health_stale_days value=14>' +
+          '<input type=hidden name=health_confidence_threshold value=0.3>' +
+          '<input type=hidden name=health_limit value=8>' +
+          '<button type=submit class="health-value badge badge-yellow" style="border:none;cursor:pointer;font:inherit;">update available</button></form>';
+      }
+    })
+    .catch(function(){});
+}, 2000);
 </script>
 
 <script>
