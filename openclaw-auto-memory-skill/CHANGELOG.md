@@ -1,18 +1,5 @@
 # Changelog
 
-## 2.6.0 (2026-07-13)
-
-### Added
-- **Pre-Rebuild Backup** — `migrations/pre_rebuild_backup.py` exports all pages before `docker compose down`, restores on startup if DB is empty
-- **Backup-before-rebuild** — `UPDATE_RESTART_COMMAND` now runs `pre_rebuild_backup.py backup` before rebuild
-- **Two-tier recovery** — startup first tries pre-rebuild backup, then falls back to Hermes state.db import
-- **Persistent backup volume** — `pg_backups` volume survives container rebuilds
-
-### Fixed
-- `pre_rebuild_backup.py` uses `psycopg` (v3) matching the project, not `psycopg2`
-- SQL columns match actual `pages` table schema (no phantom columns)
-- SKILL.md version restored to 2.5.1
-
 ## 2.5.1 (2026-07-13)
 
 ### Added
