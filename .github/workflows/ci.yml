@@ -204,3 +204,48 @@ jobs:
       - name: Cleanup
         if: always()
         run: docker compose down -v
+
+  playwright:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Start services
+        run: |
+          echo "DB_PASSWORD=ci-test-pass" > .env
+          echo "API_KEY=ci-test-key-123" >> .env
+          echo "DASHBOARD_PASSWORD=ci-test-dash-!234" >> .env
+          echo "DASHBOARD_SESSION_SECRET=ci-test-session-secret-long-enough" >> .env
+          echo "AI_PROVIDER=ollama" >> .env
+          docker compose up -d db api1 api2 caddy redis pgbouncer
+          for i in $(seq 1 30); do
+            sleep 5
+            if curl -sf http://localhost:8010/healthz > /dev/null 2>&1; then
+              echo "API is healthy! (attempt $i)"
+              break
+            fi
+            echo "  attempt $i/30..."
+          done
+
+      - name: Install Playwright
+        run: |
+          pip install playwright
+          playwright install chromium
+
+      - name: Dashboard Playwright test
+        run: |
+          curl -sf http://localhost:8010/healthz && echo "Health OK" || { echo "API not healthy"; exit 1; }
+          curl -s http://localhost:8010/dashboard | head -c 200
+          python tests/test_dashboard.py
+
+      - name: Cleanup
+        if: always()
+        run: docker compose down -v
