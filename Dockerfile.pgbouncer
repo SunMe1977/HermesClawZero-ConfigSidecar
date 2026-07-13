@@ -1,0 +1,6 @@
+FROM edoburu/pgbouncer:latest
+
+COPY pgbouncer/pgbouncer.ini /etc/pgbouncer/pgbouncer.ini
+
+ARG DB_PASSWORD_ARG
+RUN echo '"postgres" "'$DB_PASSWORD_ARG'"' > /etc/pgbouncer/userlist.txt
