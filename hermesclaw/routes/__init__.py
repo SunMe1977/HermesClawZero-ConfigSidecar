@@ -380,17 +380,47 @@ async def dashboard(
     ]
     galaxy_total = int(total_items)
 
-    # Memory type breakdown for Galaxy v3 filter
-    galaxy_type_data = {}
+    # 2M-scale: use materialized view for dashboard aggregates
+    mv_stats = None
     try:
         with connect_db() as conn:
             with conn.cursor() as cur:
-                cur.execute(
-                    "SELECT memory_type, COUNT(*) FROM pages WHERE is_archived = FALSE GROUP BY memory_type ORDER BY COUNT(*) DESC"
-                )
-                galaxy_type_data = {r[0]: r[1] for r in cur.fetchall()}
+                cur.execute("SELECT total, active, hot, warm, standard, cold, high_conf, med_conf, low_conf FROM pages_stats_mv")
+                mv_stats = cur.fetchone()
     except Exception:
-        galaxy_type_data = {"fact": 0, "conversation": 0}
+        pass
+
+    if mv_stats:
+        galaxy_high_conf = int(mv_stats[6] or 0)
+        galaxy_med_conf = int(mv_stats[7] or 0)
+        galaxy_low_conf = int(mv_stats[8] or 0)
+        tier_stats = {"hot": mv_stats[2] or 0, "warm": mv_stats[3] or 0,
+                      "standard": mv_stats[4] or 0, "cold": mv_stats[5] or 0}
+        # Use scope MV for tenant list
+        scope_rows = []
+        galaxy_tenants_list = []
+        try:
+            with connect_db() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT scope_id, total, active FROM pages_scope_stats_mv ORDER BY total DESC LIMIT 10")
+                    for row in cur.fetchall():
+                        if row[0]:
+                            scope_rows.append((row[0], int(row[1])))
+                            galaxy_tenants_list.append({"name": format_scope_label(str(row[0])), "count": int(row[1]), "scope": str(row[0])})
+        except Exception:
+            pass
+    if not mv_stats or not galaxy_tenants_list:
+        # Fallback: direct queries (cold start, MV not yet populated)
+        galaxy_type_data = {}
+        try:
+            with connect_db() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT memory_type, COUNT(*) FROM pages WHERE is_archived = FALSE GROUP BY memory_type ORDER BY COUNT(*) DESC"
+                    )
+                    galaxy_type_data = {r[0]: r[1] for r in cur.fetchall()}
+        except Exception:
+            galaxy_type_data = {"fact": 0, "conversation": 0}
 
     # Tenant-scoped type data for search
     galaxy_tenant_types = {}

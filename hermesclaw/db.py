@@ -288,8 +288,10 @@ def ensure_phase1_schema() -> None:
             cur.execute("CREATE INDEX IF NOT EXISTS idx_em_entity_page ON entity_mentions(entity_id, page_id)")
             # ── 10K-scale: Nudge composite index ──
             cur.execute("CREATE INDEX IF NOT EXISTS idx_pages_nudge ON pages(importance DESC, frequency DESC, last_used DESC) WHERE is_archived = FALSE")
+            # ── 2M-scale: Materialized views for dashboard ──
+            _ensure_2m_materialized_views(cur)
             conn.commit()
-            logger.info("[SCHEMA] 10K-scale covering indexes created")
+            logger.info("[SCHEMA] 2M-scale indexes + materialized views created")
 
     from hermesclaw.embeddings import infer_embedding_dimension
     ensure_embeddings_schema(infer_embedding_dimension())
@@ -307,3 +309,50 @@ def cleanup_orphaned_embeddings() -> int:
             deleted_count = int(cur.rowcount or 0)
             conn.commit()
     return deleted_count
+
+
+def _ensure_2m_materialized_views(cur) -> None:
+    """Create 2M-scale materialized views for dashboard performance."""
+    cur.execute("""
+        CREATE MATERIALIZED VIEW IF NOT EXISTS pages_stats_mv AS
+        SELECT
+            COALESCE(COUNT(*), 0) AS total,
+            COALESCE(COUNT(*) FILTER (WHERE is_archived = FALSE), 0) AS active,
+            COALESCE(COUNT(*) FILTER (WHERE is_archived = TRUE), 0) AS archived,
+            COALESCE(COUNT(*) FILTER (WHERE memory_tier = 'hot'), 0) AS hot,
+            COALESCE(COUNT(*) FILTER (WHERE memory_tier = 'warm'), 0) AS warm,
+            COALESCE(COUNT(*) FILTER (WHERE memory_tier = 'standard'), 0) AS standard,
+            COALESCE(COUNT(*) FILTER (WHERE memory_tier = 'cold'), 0) AS cold,
+            COALESCE(COUNT(*) FILTER (WHERE confidence >= 0.7), 0) AS high_conf,
+            COALESCE(COUNT(*) FILTER (WHERE confidence >= 0.4 AND confidence < 0.7), 0) AS med_conf,
+            COALESCE(COUNT(*) FILTER (WHERE confidence < 0.4), 0) AS low_conf,
+            COALESCE(AVG(importance)::numeric(5,3), 0) AS avg_importance,
+            COALESCE(AVG(confidence)::numeric(5,3), 0) AS avg_confidence,
+            NOW() AS computed_at
+        FROM pages
+    """)
+    cur.execute("""
+        CREATE MATERIALIZED VIEW IF NOT EXISTS pages_scope_stats_mv AS
+        SELECT
+            scope_id, COUNT(*) AS total,
+            COUNT(*) FILTER (WHERE is_archived = FALSE) AS active
+        FROM pages WHERE scope_id IS NOT NULL
+        GROUP BY scope_id
+    """)
+    cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_pss_mv_scope ON pages_scope_stats_mv(scope_id)")
+
+
+def refresh_materialized_views() -> dict:
+    """Refresh materialized views (called by optimizer). Returns row counts."""
+    with connect_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("REFRESH MATERIALIZED VIEW CONCURRENTLY pages_stats_mv")
+            cur.execute("REFRESH MATERIALIZED VIEW CONCURRENTLY pages_scope_stats_mv")
+            conn.commit()
+            cur.execute("SELECT total, active, hot, warm FROM pages_stats_mv")
+            row = cur.fetchone()
+    return {
+        "total": row[0] if row else 0,
+        "active": row[1] if row else 0,
+        "views_refreshed": True,
+    }

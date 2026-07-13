@@ -1,0 +1,29 @@
+# Caddy reverse proxy for multi-replica HermesClawZero API
+# Listens on :8010, load balances across 2 API replicas on :8101/:8102
+
+:8010 {
+    # Health check endpoint — proxy direct to api1
+    handle /healthz {
+        reverse_proxy api1:8100
+    }
+
+    # All other traffic — round-robin across replicas
+    handle {
+        reverse_proxy api1:8100 api2:8100 {
+            lb_policy round_robin
+            health_uri /healthz
+            health_interval 10s
+            health_timeout 3s
+        }
+    }
+
+    # Global settings
+    log {
+        output file /data/access.log
+        format json
+    }
+    header {
+        X-Frame-Options "DENY"
+        X-Content-Type-Options "nosniff"
+    }
+}

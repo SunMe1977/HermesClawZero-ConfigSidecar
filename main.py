@@ -76,6 +76,13 @@ def decay_loop() -> None:
                 "[OPTIMIZER] decay=%s archived=%s deleted=%s",
                 stats["decayed"], stats["archived"], stats["deleted"],
             )
+            # Refresh 2M-scale materialized views
+            try:
+                from hermesclaw.db import refresh_materialized_views
+                mv = refresh_materialized_views()
+                logger.info("[MV] views refreshed: total=%s active=%s", mv["total"], mv["active"])
+            except Exception as mv_ex:
+                logger.debug("[MV] refresh error (non-fatal): %s", mv_ex)
             # Run tier assignment every cycle too
             try:
                 tiers = run_tier_assignment()
@@ -235,4 +242,4 @@ app.include_router(router)
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8010)
+    uvicorn.run(app, host="0.0.0.0", port=8100)
