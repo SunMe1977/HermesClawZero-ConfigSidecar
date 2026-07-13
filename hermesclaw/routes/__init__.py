@@ -1126,7 +1126,15 @@ async def update_run_from_dashboard(
     health_limit: int = Form(8),
 ):
     result = await run_in_threadpool(run_update)
-    msg = "Update run complete." if result.get("updated") else result.get("message", "No update applied.")
+    if result.get("updated"):
+        msg = "✅ Update successful!"
+    elif result.get("message"):
+        stderr = result.get("stderr", "")
+        msg = f"❌ {result['message']}"
+        if stderr:
+            msg += f" — {stderr[:200]}"
+    else:
+        msg = "No update applied."
     return _dashboard_redirect(
         msg, "optimizer_msg",
         query, selected_scope, page,
