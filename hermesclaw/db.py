@@ -50,7 +50,10 @@ def close_db_pool() -> None:
 
 
 def connect_db() -> Any:
-    return get_db_pool().connection()
+    conn = get_db_pool().connection()
+    with conn.cursor() as cur:
+        cur.execute("SET statement_timeout = '10s'")
+    return conn
 
 
 def embedding_to_pgvector_literal(embedding: list[float]) -> str:

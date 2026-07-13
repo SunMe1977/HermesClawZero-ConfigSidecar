@@ -426,7 +426,8 @@ async def dashboard(
                 cur.execute("SET statement_timeout = '5s'")
                 cur.execute(
                     "SELECT id, content, scope_id, memory_type, importance, confidence, sentiment, created_at, tags "
-                    "FROM pages WHERE is_archived = FALSE ORDER BY created_at DESC LIMIT 200"
+                    "FROM pages WHERE is_archived = FALSE AND id > (SELECT COALESCE(MAX(id) - 250, 0) FROM pages) "
+                    "ORDER BY id DESC LIMIT 200"
                 )
                 for row in cur.fetchall():
                     tags_list = (row[8] or "").split(",") if row[8] else []
