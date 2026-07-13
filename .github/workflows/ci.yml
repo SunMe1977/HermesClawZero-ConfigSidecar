@@ -130,13 +130,17 @@ jobs:
           echo "AI_PROVIDER=ollama" >> .env
           docker compose -f docker-compose.yml up -d db api
           echo "Waiting for API to be healthy..."
-          for i in $(seq 1 15); do
-            sleep 2
+          for i in $(seq 1 30); do
+            sleep 5
             if curl -sf http://localhost:8010/healthz > /dev/null 2>&1; then
-              echo "API is healthy!"
+              echo "API is healthy! (attempt $i)"
               break
             fi
-            echo "  attempt $i/15..."
+            echo "  attempt $i/30..."
+            if [ $i -eq 15 ]; then
+              echo "--- docker logs (api) ---"
+              docker logs hermesclawzero-configsidecar-api-1 2>&1 | tail -20
+            fi
           done
 
       - name: Integration test — health endpoint
