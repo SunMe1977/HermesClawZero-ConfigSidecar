@@ -91,7 +91,7 @@ services:
       - /root/workspace/hc-sidecar/sync:/app/sync
       - ${HERMES_DB_PATH_DIR:-/root/.hermes}:/hermes_state:ro
       # Access pre-rebuild backups for startup recovery
-      - pg_backups:/var/lib/postgresql/backups:ro
+      - pg_backups:/var/lib/postgresql/backups
     environment:
       DB_HOST: pgbouncer
       DB_PORT: 5432
