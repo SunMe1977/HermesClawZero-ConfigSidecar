@@ -23,8 +23,8 @@ class DockerfilePgvectorPinnedTest(unittest.TestCase):
             "Dockerfile.postgres must use pgvector/pgvector:<tag>")
         self.assertNotIn("FROM pgvector/pgvector:latest", content,
             "pgvector :latest causes silent PG major version upgrades -> data loss!")
-        self.assertIn("ARG PG_BASE=", content,
-            "Dockerfile.postgres must use ARG PG_BASE for pg version selection")
+        self.assertIn("ARG PGVECTOR_IMAGE=", content,
+            "Dockerfile.postgres must use ARG PGVECTOR_IMAGE for image selection")
 
 
 # ── 2. Auto-recovery: pages < 100 triggers Hermes state.db import ──

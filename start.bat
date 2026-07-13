@@ -35,16 +35,32 @@ if "%ENV_DASHBOARD_SESSION_SECRET%"=="%ENV_API_KEY%" (
 echo [START] System Services...
 docker compose down --remove-orphans
 
+rem Auto-detect pgdata volume PG version for build arg
+set "PG_BUILD_ARG="
+docker volume inspect hermesclawzero-configsidecar_pgdata >nul 2>&1
+if not errorlevel 1 (
+    echo [START] Existing pgdata volume found — checking PG version...
+    docker run --rm -v hermesclawzero-configsidecar_pgdata:/data alpine cat /data/PG_VERSION 2>nul | findstr /c:"15" >nul 2>&1
+    if not errorlevel 1 (
+        set "PG_BUILD_ARG=--build-arg PGVECTOR_IMAGE=pgvector/pgvector:0.7.4-pg15"
+        echo [START] Detected PG15 volume — using pgvector/pgvector:0.7.4-pg15
+    ) else (
+        echo [START] Detected PG17+ volume — using default image
+    )
+) else (
+    echo [START] No existing pgdata volume — fresh install, using default image
+)
+
 if /I "%PROVIDER%"=="ollama" (
     echo [START] AI_PROVIDER=ollama ^> starting with Ollama profile
-    docker compose --profile ollama up --build -d
+    docker compose %PG_BUILD_ARG% --profile ollama up --build -d
 ) else (
     if "%PROVIDER%"=="" (
         echo [START] AI_PROVIDER is unset ^> starting without Ollama container
     ) else (
         echo [START] AI_PROVIDER=%PROVIDER% ^> starting without Ollama container
     )
-    docker compose up --build -d
+    docker compose %PG_BUILD_ARG% up --build -d
 )
 
 echo [START] Waiting for API health at http://localhost:8010/healthz ...

@@ -1,8 +1,8 @@
-# Usage: docker compose build --build-arg PG_BASE=pg17 db
-#   pg17 = new installs (default)
-#   pg15 = existing Windows volume (PG15 data)
-ARG PG_BASE=pg17
-FROM pgvector/pgvector:0.7.4-${PG_BASE}
+# Usage: docker compose build --build-arg PGVECTOR_IMAGE=pgvector/pgvector:0.7.4-pg15 db
+#   pgvector/pgvector:0.8.0-pg17 = new installs / Linux PG17 volume (default)
+#   pgvector/pgvector:0.7.4-pg15 = existing Windows PG15 volume
+ARG PGVECTOR_IMAGE=pgvector/pgvector:0.8.0-pg17
+FROM ${PGVECTOR_IMAGE}
 
 # Port
 EXPOSE 5432
