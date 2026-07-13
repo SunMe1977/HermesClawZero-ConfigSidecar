@@ -21,7 +21,7 @@ jobs:
       - name: Install lint tools
         run: |
           python -m pip install --upgrade pip
-          pip install flake8 mypy
+          pip install flake8 mypy pyyaml
 
       - name: Python syntax check (all py files)
         run: |
@@ -38,14 +38,6 @@ jobs:
             --ignore=E203,E266,E501,W503,F401,F841 \
             --exclude=venv,.git,__pycache__,migrations,archive,raw \
             --statistics
-        continue-on-error: true
-
-      - name: mypy type checking (basic)
-        run: |
-          mypy --ignore-missing-imports --follow-imports=skip \
-            --exclude 'venv/' --exclude '.git/' \
-            hermesclaw/scoring.py hermesclaw/config.py hermesclaw/models.py || true
-        continue-on-error: true
 
       - name: Validate docker-compose.yml
         run: python -c "import yaml; yaml.safe_load(open('docker-compose.yml')); print('docker-compose.yml OK')"
@@ -53,16 +45,21 @@ jobs:
       - name: Validate .env.example has required vars
         run: |
           for var in API_KEY DB_PASSWORD AI_PROVIDER; do
-            grep -q "^${var}=" .env.example && echo "  OK: $var" || echo "  MISSING: $var"
+            grep -q "^${var}=" .env.example && echo "  OK: $var" || { echo "  MISSING: $var"; exit 1; }
           done
 
       - name: Check required project files
         run: |
-          for f in AGENTS.md llms.txt LICENSE README.md CHANGELOG.md .env.example Dockerfile.api docker-compose.yml; do
-            test -f "$f" && printf "  OK: %s\n" "$f" || printf "  MISSING: %s\n" "$f"
+          for f in AGENTS.md llms.txt LICENSE README.md CHANGELOG.md .env.example Dockerfile.api Dockerfile.postgres docker-compose.yml; do
+            test -f "$f" && printf "  OK: %s\n" "$f" || { printf "  MISSING: %s\n" "$f"; exit 1; }
           done
 
+      - name: Data-loss prevention checks (static analysis)
+        run: |
+          python -m unittest tests.test_data_loss_prevention -v
+
   test:
+    needs: [lint]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -74,7 +71,7 @@ jobs:
         run: |
           pip install --upgrade pip
           pip install -r requirements.txt
-          pip install pytest pytest-cov
+          pip install pytest pytest-cov pyyaml
 
       - name: Run unit tests
         env:
@@ -83,11 +80,12 @@ jobs:
           DASHBOARD_SESSION_SECRET: test-session-secret-very-strong
           DB_HOST: localhost
           DB_PASSWORD: test
+          EMBEDDING_DIM: ""
         run: |
           python -m pytest tests/ -v --tb=short --cov=hermesclaw --cov-report=term-missing
-        continue-on-error: true
 
   docker:
+    needs: [test]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -113,5 +111,65 @@ jobs:
           load: true
           tags: hermesclaw-postgres:ci
 
-      - name: Verify images exist
-        run: docker images --filter=reference="hermesclaw-*" --format "{{.Repository}}:{{.Tag}}"
+      - name: Start services
+        run: |
+          echo "DB_PASSWORD=ci-test-pass" > .env
+          echo "API_KEY=ci-test-key-123" >> .env
+          echo "AI_PROVIDER=ollama" >> .env
+          docker compose -f docker-compose.yml up -d db api
+          echo "Waiting for API to be healthy..."
+          for i in $(seq 1 15); do
+            sleep 2
+            if curl -sf http://localhost:8010/healthz > /dev/null 2>&1; then
+              echo "API is healthy!"
+              break
+            fi
+            echo "  attempt $i/15..."
+          done
+
+      - name: Integration test — health endpoint
+        run: |
+          HEALTH=$(curl -sf http://localhost:8010/healthz)
+          echo "Health: $HEALTH"
+          echo "$HEALTH" | python -c "import sys,json; d=json.load(sys.stdin); assert d.get('status')=='ok', f'Status was {d.get(\"status\")}'; print('  status=ok PASS')"
+          echo "$HEALTH" | python -c "import sys,json; d=json.load(sys.stdin); assert d.get('database')=='ok', f'DB was {d.get(\"database\")}'; print('  database=ok PASS')"
+
+      - name: Integration test — version endpoint
+        run: |
+          VERSION=$(curl -sf http://localhost:8010/version)
+          echo "Version: $VERSION"
+          echo "$VERSION" | python -c "import sys,json; d=json.load(sys.stdin); assert d.get('status')=='ok'; print('  version endpoint PASS')"
+
+      - name: Integration test — capture + search roundtrip
+        run: |
+          KEY=ci-test-key-123
+          # Capture a memory
+          CAP=$(curl -sf -X POST "http://localhost:8010/capture?key=$KEY" \
+            -H "Content-Type: application/json" \
+            -d '{"text":"CI test memory — this is a test fact"}')
+          echo "Capture: $CAP"
+          echo "$CAP" | python -c "import sys,json; d=json.load(sys.stdin); print(f'  page_id={d.get(\"id\",\"?\")}')"
+          CAP_ID=$(echo "$CAP" | python -c "import sys,json; print(json.load(sys.stdin).get('id',''))")
+          test -n "$CAP_ID" || { echo "FAIL: no id in capture response"; exit 1; }
+
+          # Search for it
+          SEARCH=$(curl -sf "http://localhost:8010/search?query=CI+test+memory&key=$KEY")
+          echo "Search: $SEARCH"
+          echo "$SEARCH" | python -c "import sys,json; d=json.load(sys.stdin) if isinstance(json.load(sys.stdin),list) else [json.load(sys.stdin)]; results=[r for r in d if isinstance(r,dict)]; assert any('CI test memory' in r.get('content','') for r in results), 'Search did not find the captured memory'; print('  capture+search roundtrip PASS')"
+
+      - name: Integration test — bi-temporal endpoints
+        run: |
+          KEY=ci-test-key-123
+          TIMELINE=$(curl -sf "http://localhost:8010/timeline?key=$KEY&limit=5")
+          echo "Timeline: $TIMELINE"
+          echo "$TIMELINE" | python -c "import sys,json; d=json.load(sys.stdin); assert d.get('status')=='ok'; print('  /timeline endpoint PASS')"
+
+      - name: Integration test — dashboard loads
+        run: |
+          DASH=$(curl -sf "http://localhost:8010/dashboard?key=ci-test-key-123" 2>&1 | head -5)
+          echo "Dashboard: ${DASH:0:100}..."
+          echo "$DASH" | python -c "import sys; c=sys.stdin.read(); assert 'Memory Galaxy' in c or 'Dashboard' in c or 'Total' in c; print('  dashboard HTML PASS')"
+
+      - name: Cleanup
+        if: always()
+        run: docker compose down -v

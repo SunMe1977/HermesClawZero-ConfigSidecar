@@ -1,0 +1,39 @@
+#!/bin/sh
+# Pre-push hook: run data-loss prevention tests + syntax check before pushing to main.
+# Install: git config core.hooksPath .githooks
+
+REMOTE="$1"
+URL="$2"
+BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
+
+# Only check pushes to main
+if [ "$BRANCH" != "main" ]; then
+    exit 0
+fi
+
+echo ""
+echo "=== pre-push: main branch — running data-loss prevention checks ==="
+
+# 1. Syntax check all changed .py files
+CHANGED=$(git diff --name-only --cached --diff-filter=ACMR | grep '\.py$' || true)
+if [ -n "$CHANGED" ]; then
+    for f in $CHANGED; do
+        if [ -f "$f" ]; then
+            python -m py_compile "$f" || { echo "FAIL: syntax error in $f"; exit 1; }
+        fi
+    done
+fi
+
+# 2. Run data-loss prevention tests
+python -m unittest tests.test_data_loss_prevention -q 2>/dev/null
+if [ $? -ne 0 ]; then
+    echo ""
+    echo "!! DATA-LOSS PREVENTION TESTS FAILED !!"
+    echo "Fix the issues before pushing to main."
+    echo "Run: python -m unittest tests.test_data_loss_prevention -v"
+    exit 1
+fi
+
+echo "=== pre-push: all checks passed ==="
+echo ""
+exit 0
