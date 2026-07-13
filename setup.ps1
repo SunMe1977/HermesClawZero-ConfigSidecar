@@ -220,7 +220,12 @@ $lines += @(
 )
 
 $content = $lines -join [Environment]::NewLine
-$content | Out-File -FilePath $envFile -Encoding UTF8
+if ($PSVersionTable.PSVersion.Major -ge 7) {
+    $content | Out-File -FilePath $envFile -Encoding utf8NoBOM
+} else {
+    # PowerShell 5.1: write UTF-8 without BOM via .NET
+    [System.IO.File]::WriteAllText($envFile, $content, [System.Text.UTF8Encoding]::new($false))
+}
 Write-Host '.env saved.' -ForegroundColor Green
 
 # 5. Optional Ollama Setup
