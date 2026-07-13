@@ -74,4 +74,10 @@ if errorlevel 1 (
 echo [START] Launching sync_watchdog.py in background
 start "" python sync_watchdog.py
 
+echo.
+echo ============================================
+echo   Dashboard: http://localhost:8010/dashboard
+echo   Health:    http://localhost:8010/healthz
+echo ============================================
 echo [OK] System running.
+echo.
