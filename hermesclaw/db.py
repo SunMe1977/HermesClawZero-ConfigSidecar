@@ -281,6 +281,7 @@ def ensure_phase1_schema() -> None:
     with connect_db() as conn:
         with conn.cursor() as cur:
             cur.execute("CREATE INDEX IF NOT EXISTS idx_pages_dash ON pages(scope_id, is_archived, created_at DESC) WHERE is_archived = FALSE")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_pages_created ON pages(created_at DESC) WHERE is_archived = FALSE")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_pages_type ON pages(memory_type, is_archived) WHERE is_archived = FALSE")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_pages_tier_scope ON pages(memory_tier, scope_id) WHERE is_archived = FALSE")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_pages_decay ON pages(last_used, confidence, is_archived) WHERE is_archived = FALSE")
