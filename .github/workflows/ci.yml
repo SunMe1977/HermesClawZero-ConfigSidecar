@@ -142,7 +142,7 @@ jobs:
             echo "  attempt $i/30..."
             if [ $i -eq 15 ]; then
               echo "--- docker logs (api) ---"
-              docker logs hermesclawzero-configsidecar-api-1 2>&1 | tail -20
+              docker logs hc-sidecar-api1-1 2>&1 | tail -20
             fi
           done
 

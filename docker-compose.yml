@@ -3,7 +3,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.postgres
-    container_name: gbrain-postgres
+    container_name: hc-sidecar-postgres
     restart: unless-stopped
     ports:
       - "5666:5432"
@@ -48,7 +48,7 @@ services:
       dockerfile: Dockerfile.pgbouncer
       args:
         DB_PASSWORD_ARG: ${DB_PASSWORD:?DB_PASSWORD is required}
-    container_name: gbrain-pgbouncer
+    container_name: hc-sidecar-pgbouncer
     restart: unless-stopped
     ports:
       - "6432:5432"
@@ -60,7 +60,7 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: gbrain-redis
+    container_name: hc-sidecar-redis
     restart: unless-stopped
     ports:
       - "6379:6379"
@@ -125,7 +125,7 @@ services:
 
   caddy:
     image: caddy:2-alpine
-    container_name: gbrain-caddy
+    container_name: hc-sidecar-caddy
     restart: unless-stopped
     ports:
       - "8010:8010"
@@ -147,7 +147,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.ollama
-    container_name: gbrain-ollama
+    container_name: hc-sidecar-ollama
     restart: unless-stopped
     ports:
       - "11435:11434"
