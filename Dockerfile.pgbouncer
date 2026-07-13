@@ -1,4 +1,4 @@
-FROM edoburu/pgbouncer:latest
+FROM edoburu/pgbouncer:1.24.0
 
 COPY pgbouncer/pgbouncer.ini /etc/pgbouncer/pgbouncer.ini
 

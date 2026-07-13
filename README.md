@@ -136,9 +136,9 @@ Two pre-built skills integrate the sidecar with your agent:
 
 | Container | Port | Role |
 |-----------|------|------|
-| `hermesclawzero-configsidecar-api-1` | `:8010` | FastAPI + Dashboard + capture/search |
-| `gbrain-postgres` | `:5666` | PostgreSQL 16 + pgvector |
-| `gbrain-ollama` | `:11435` | Ollama (nomic-embed-text) |
+| `hc-sidecar-api1` | `:8010` (via Caddy) | FastAPI + Dashboard + capture/search |
+| `hc-sidecar-postgres` | `:5666` | PostgreSQL 15/17 + pgvector |
+| `hc-sidecar-ollama` | `:11435` | Ollama (nomic-embed-text) |
 
 **Health:** `curl http://localhost:8010/healthz` → `{"status":"ok"}`
 

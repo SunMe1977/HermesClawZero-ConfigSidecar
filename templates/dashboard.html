@@ -3,6 +3,10 @@
 <head>
   <title>Memory Dashboard</title>
   <style>
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .skeleton { background:linear-gradient(90deg,#18181d 25%,#1f1f26 50%,#18181d 75%);background-size:200% 100%;animation:shimmer 1.5s infinite;border-radius:8px }
+    @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+  </style>
     :root {
       --bg-primary: #0b0b0f;
       --bg-secondary: #121216;
@@ -261,6 +265,12 @@
   </style>
 </head>
 <body>
+<div id="loadingOverlay" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(11,11,15,0.85);z-index:9999;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .2s;pointer-events:none">
+  <div style="text-align:center">
+    <div style="width:40px;height:40px;border:3px solid #2a2a35;border-top-color:#a78bfa;border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 16px"></div>
+    <div style="color:#9e9eb0;font-size:13px">Loading…</div>
+  </div>
+</div>
  <div class="modal-overlay" id="editorOverlay" onclick="document.getElementById('editorOverlay').style.display='none';document.getElementById('editorModal').style.display='none'"></div>
  <div id="editorModal" class="modal-box" style="display:none;">
    <h3>✏️ Edit Memory</h3>
@@ -663,7 +673,14 @@ setTimeout(function checkUpdate() {
 <script>
 // ─── Memory Galaxy Animation Engine v2 ────────────────────────────────────
 let _autoRefreshTimer;
-function _startAutoRefresh() { clearTimeout(_autoRefreshTimer); _autoRefreshTimer = setTimeout(() => location.reload(), 5000); }
+function _showLoading() {
+  var el = document.getElementById('loadingOverlay');
+  if (el) el.style.opacity = '1';
+}
+function _startAutoRefresh() {
+  clearTimeout(_autoRefreshTimer);
+  _autoRefreshTimer = setTimeout(() => { _showLoading(); setTimeout(() => location.reload(), 300); }, 5000);
+}
 _startAutoRefresh();
 
 const GALAXY_DATA = {

@@ -145,7 +145,7 @@ def get_current_username(
     )
 
 
-def require_api_key(request: Request):
+def require_api_key(request: Request) -> None:
     """Require X-API-Key header. Query-param fallback removed for security (key leaks in logs)."""
     key = request.headers.get("x-api-key")
     if not key or not API_KEY or not secrets.compare_digest(key, API_KEY):

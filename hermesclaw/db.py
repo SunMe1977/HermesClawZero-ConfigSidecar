@@ -3,6 +3,7 @@
 import os
 import threading
 import logging
+from typing import Any
 from psycopg_pool import ConnectionPool
 from hermesclaw.config import (
     DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD,
@@ -48,7 +49,7 @@ def close_db_pool() -> None:
         logger.info("DB connection pool closed.")
 
 
-def connect_db():
+def connect_db() -> Any:
     return get_db_pool().connection()
 
 
