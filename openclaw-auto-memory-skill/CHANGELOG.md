@@ -1,5 +1,23 @@
 # Changelog
 
+## 2.5.0 (2026-07-13)
+
+### Added
+- **Multi-Replica API** — Redis + Caddy LB, 2 API-Instanzen (api1/api2) hinter Load Balancer
+- **PgBouncer custom Dockerfile** — edoburu/pgbouncer mit PW per Build-Arg, Port 5432
+- **Materialized Views** — `pages_stats_mv` + `pages_scope_stats_mv` für Dashboard (ms statt COUNT*)
+- **PITR Backup** — WAL archiving (wal_level=replica, archive_mode=on, pgwal volume)
+- **Async Embedding Queue** — Capture returned sofort, Batch-Worker (10er) im Hintergrund
+- **HNSW Index Tuning** — m=16→32, ef_construction=400, ef_search×2 für 2M Vektoren
+- **k6 Load Testing** — `tests/loadtest.js` (200 concurrent users, health/search/capture)
+
+### Changed
+- **Container Naming** — `gbrain-*` → `hc-sidecar-*` (konsistent zu repo name)
+- **API Port** — intern 8100, Caddy auf 8010 extern
+- **Dashboard** — COUNT(*) Abfragen durch Materialized Views ersetzt
+- **Optimizer** — refreshed MV + auto-tier + dedup in jedem Zyklus
+- **macOS Setup** — Colima als primärer Docker-Fallback
+
 ## 2.4.0 (2026-07-13)
 
 ### Added
