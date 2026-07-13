@@ -1,5 +1,21 @@
 # Changelog
 
+## 2.4.0 (2026-07-13)
+
+### Added
+- **Data-loss prevention** — pgvector pinned to `pgvector/pgvector:0.8.0-pg17` (nicht `:latest`), verhindert DB Volume Re-Init bei Auto-Updates
+- **Auto-Recovery** — bei `pages < 100` wird Hermes state.db automatisch im Hintergrund importiert
+- **DB Backup** — `migrations/backup_db.sh`: täglicher pg_dump mit 14 Tagen Retention
+- **15 Data-Loss Tests** — statische Analyse: pgvector-Pin, keine DROP TABLE pages, EMBEDDING_DIM portability, Recovery-Block in main.py
+- **CI Gated Pipeline** — 3 Jobs (lint→test→docker) ohne `continue-on-error`, Integration-Tests mit Docker Healthcheck
+- **Branch Protection** — main erfordert PR + 1 Review + CI-Checks
+- **Pre-push Hook** — `.githooks/pre-push` läuft vor jedem Push auf main
+
+### Fixed
+- **EMBEDDING_DIM** portabel gemacht (`${EMBEDDING_DIM}` statt hardcodiertem 1536 → funktioniert wieder mit Ollama)
+- **PGUSER/PGDATA** gesetzt → verhindert PostgreSQL Re-Init bei Container-Restart
+- **ALLOW_EMBEDDING_SCHEMA_RESET** nur auf embeddings-Tabelle (nicht pages)
+
 ## 2.3.0 (2026-07-12)
 
 ### Added
