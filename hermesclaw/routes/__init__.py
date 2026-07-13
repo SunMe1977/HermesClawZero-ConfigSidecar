@@ -1135,7 +1135,10 @@ async def update_run_from_dashboard(
         if stderr:
             msg += f" — {stderr[:200]}"
     else:
-        msg = "No update applied."
+        # Show git hash even when nothing to update
+        ver = get_version_info()
+        sha = ver.get("git", {}).get("short_sha", "?") if ver.get("git") else "?"
+        msg = f"No update applied. Current: {sha}"
     return _dashboard_redirect(
         msg, "optimizer_msg",
         query, selected_scope, page,

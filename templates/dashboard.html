@@ -344,7 +344,9 @@
       <div class="health-item"><span class="health-label">App Version</span><span class="health-value">{{ version_info.version }}</span></div>
       <div class="health-item"><span class="health-label">Update</span>
         <span id="updateBadge">
-        {% if update_status.get('available') %}
+        {% if update_status.get('error') %}
+        <span class="health-value badge badge-red" title="{{ update_status.error }}">⚠ update error</span>
+        {% elif update_status.get('available') %}
         <form method="post" action="/update/run_from_dashboard" style="display:inline;margin:0;">
           <input type="hidden" name="query" value="{{ query }}">
           <input type="hidden" name="selected_scope" value="{{ active_scope }}">
@@ -355,7 +357,7 @@
           <button type="submit" class="health-value badge badge-yellow" style="border:none;cursor:pointer;font:inherit;">update available ⬆</button>
         </form>
         {% else %}
-        <span class="health-value badge badge-green">up to date ✓</span>
+        <span class="health-value badge badge-green" title="Local: {{ version_info.git.short_sha if version_info.git else '?' }}">up to date ✓</span>
         {% endif %}
         </span>
       </div>
