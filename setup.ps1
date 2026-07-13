@@ -148,10 +148,13 @@ if (Get-Command "git" -ErrorAction SilentlyContinue) {
         }
     }
 }
-$AUTO_UPDATE_REMOTE = Get-Input "AUTO_UPDATE_REMOTE" "Git remote for updates" $detectedRemote
-$AUTO_UPDATE_BRANCH = Get-Input "AUTO_UPDATE_BRANCH" "Git branch for updates" $detectedBranch
-$UPDATE_REPO_DIR = Get-Input "UPDATE_REPO_DIR" "Repo path used by updater" $detectedRepoDir
-$UPDATE_RESTART_COMMAND = Get-Input "UPDATE_RESTART_COMMAND" "Restart command after update (optional)" ""
+$AUTO_UPDATE_REMOTE = $detectedRemote
+$AUTO_UPDATE_BRANCH = $detectedBranch
+$UPDATE_REPO_DIR = $detectedRepoDir
+
+# Default restart command: start.bat (Windows) or start.sh (Linux/macOS)
+$detectedRestartCmd = if ([Environment]::OSVersion.Platform -eq [PlatformID]::Win32NT) { "start.bat" } else { "./start.sh" }
+$restartCmd = Get-Input "UPDATE_RESTART_COMMAND" "Restart command after update" $detectedRestartCmd
 
 $detectedHermesDb = if ($config.ContainsKey("HERMES_DB_PATH")) { $config["HERMES_DB_PATH"] } else { "" }
 if ([string]::IsNullOrWhiteSpace($detectedHermesDb)) {
@@ -206,7 +209,7 @@ $lines += @(
     "AUTO_UPDATE_REMOTE=$AUTO_UPDATE_REMOTE"
     "AUTO_UPDATE_BRANCH=$AUTO_UPDATE_BRANCH"
     "UPDATE_REPO_DIR=$UPDATE_REPO_DIR"
-    "UPDATE_RESTART_COMMAND=$UPDATE_RESTART_COMMAND"
+    "UPDATE_RESTART_COMMAND=$restartCmd"
     "HERMES_DB_PATH=$HERMES_DB_PATH"
 )
 # Only ask for embedding model matching the chosen provider
