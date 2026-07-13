@@ -151,10 +151,7 @@ if (Get-Command "git" -ErrorAction SilentlyContinue) {
 $AUTO_UPDATE_REMOTE = $detectedRemote
 $AUTO_UPDATE_BRANCH = $detectedBranch
 $UPDATE_REPO_DIR = $detectedRepoDir
-
-# Default restart command: start.bat (Windows) or start.sh (Linux/macOS)
-$detectedRestartCmd = if ([Environment]::OSVersion.Platform -eq [PlatformID]::Win32NT) { "start.bat" } else { "./start.sh" }
-$restartCmd = Get-Input "UPDATE_RESTART_COMMAND" "Restart command after update" $detectedRestartCmd
+$restartCmd = if ([Environment]::OSVersion.Platform -eq [PlatformID]::Win32NT) { "start.bat" } else { "./start.sh" }
 
 $detectedHermesDb = if ($config.ContainsKey("HERMES_DB_PATH")) { $config["HERMES_DB_PATH"] } else { "" }
 if ([string]::IsNullOrWhiteSpace($detectedHermesDb)) {
