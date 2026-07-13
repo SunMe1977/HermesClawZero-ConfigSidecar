@@ -1,5 +1,8 @@
-# Basis: fertiges pgvector-Image
-FROM ankane/pgvector:latest
+# Basis: pgvector mit fester Version (nicht :latest!)
+# Wichtig: :latest kann die PostgreSQL-Major-Version ändern und
+# dadurch den Datenbank-Volume neu initialisieren (Datenverlust!).
+# pgvector/pg17 bindet an PostgreSQL 17.
+FROM pgvector/pgvector:0.8.0-pg17
 
 # Port
 EXPOSE 5432
