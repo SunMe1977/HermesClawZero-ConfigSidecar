@@ -171,6 +171,30 @@ def startup_event():
         except Exception as ex:
             logger.warning("[IMPORT] Non-fatal error: %s", ex)
 
+        # Auto-recover: import Hermes state.db messages into pages table
+        # if pages count is suspiciously low (data lost after rebuild)
+        try:
+            with connect_db() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT COUNT(*) FROM pages")
+                    page_count = cur.fetchone()[0]
+            if page_count < 100:
+                logger.warning("[RECOVERY] Only %d pages found — triggering Hermes state.db import", page_count)
+                import subprocess, sys
+                result = subprocess.run(
+                    [sys.executable, "/app/repo/migrations/import_from_hermes_db.py",
+                     "--hermes-db", "/hermes_state/state.db", "--minimal"],
+                    capture_output=True, text=True, timeout=600,
+                )
+                for line in result.stdout.splitlines():
+                    logger.info("[RECOVERY] %s", line)
+                if result.returncode != 0:
+                    logger.warning("[RECOVERY] Import stderr: %s", result.stderr[:500])
+                else:
+                    logger.info("[RECOVERY] Hermes state.db import completed successfully")
+        except Exception as ex:
+            logger.warning("[RECOVERY] Non-fatal error: %s", ex)
+
         # First-run tier assignment + graph schema
         try:
             tiers = run_tier_assignment()

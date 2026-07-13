@@ -384,6 +384,10 @@ def main() -> None:
         "--dry-run", action="store_true",
         help="Show what would be imported without writing",
     )
+    parser.add_argument(
+        "--minimal", action="store_true",
+        help="Import only — skip embedding generation (faster at startup, e.g. cron)",
+    )
     args = parser.parse_args()
 
     logger.info("Migration: Hermes state.db → Sidecar pages")
@@ -411,6 +415,10 @@ def main() -> None:
 
     # Step 4: Import
     import_rows(rows, dry_run=args.dry_run)
+
+    # Step 5: Auto-generate embeddings (skip with --minimal for faster startup)
+    if not args.dry_run and not args.minimal:
+        _generate_missing_embeddings()
 
     # Step 5: Summary
     if not args.dry_run:
