@@ -61,7 +61,7 @@ def get_update_status(fetch_remote: bool = True) -> dict:
 def run_update() -> dict:
     status_before = get_update_status(fetch_remote=True)
     if status_before.get("error"):
-        return {"updated": False, "status": status_before}
+        return {"updated": False, "status": status_before, "message": status_before["error"]}
 
     if not status_before.get("available"):
         return {"updated": False, "status": status_before, "message": "already up to date"}
