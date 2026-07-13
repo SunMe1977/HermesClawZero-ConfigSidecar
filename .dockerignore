@@ -1,20 +1,45 @@
-.git
+# Version control
+.git/
+.gitattributes
 .gitignore
-venv
-__pycache__
-*.pyc
-*.pyo
-*.pyd
-*.log
-*.pid
+.gitmodules
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+
+# Environment
 .env
-archive
-raw
-sync
-inbox
-knowledge
-node
-npm
-pnpm
-*.db
-*.sqlite
+venv/
+.venv/
+env/
+
+# Docker
+.docker/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Runtime state (recreated automatically)
+sync_last_id.txt
+sync_last_id.txt.bak
+sync_failed_ids.json
+memory_sync.pid
+sync.log
+
+# Legacy / unused top-level files
+archive/
+raw/
+inbox/
+knowledge/
+images/

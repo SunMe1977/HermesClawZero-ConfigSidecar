@@ -5,12 +5,10 @@ import time
 import html
 import logging
 import threading
-from urllib.parse import quote_plus
-import jinja2
-
 from fastapi import APIRouter, HTTPException, Depends, Form, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from starlette.concurrency import run_in_threadpool
+from hermesclaw.routes._shared import _jinja_env, _dashboard_redirect, safe_int, safe_float
 from hermesclaw.config import (
     API_KEY, DASHBOARD_SCOPE_ALL, DASHBOARD_SCOPE_UNSCOPED,
     SCOPE_ALIASES, AUTO_UPDATE_ENABLED, AUTO_UPDATE_APPLY,
@@ -43,44 +41,6 @@ router = APIRouter()
 
 _CHANGE_SECRET = threading.Event()
 _shutdown_event = threading.Event()
-
-# Jinja2 environment for the dashboard template
-_template_dir = __import__("os").path.join(__import__("os").path.dirname(__file__), "..", "..", "templates")
-_jinja_env = jinja2.Environment(
-    loader=jinja2.FileSystemLoader(_template_dir),
-    autoescape=True,
-    cache_size=0,
-)
-
-
-def _dashboard_redirect(
-    msg: str,
-    msg_key: str = "optimizer_msg",
-    query: str = "",
-    selected_scope: str = DASHBOARD_SCOPE_ALL,
-    page: int = 1,
-    health_stale_days: int = 14,
-    health_confidence_threshold: float = 0.3,
-    health_limit: int = 8,
-) -> RedirectResponse:
-    """Build a redirect to /dashboard with all current parameters preserved."""
-    safe_page = max(1, page)
-    safe_stale_days = max(1, min(health_stale_days, 3650))
-    safe_confidence = clamp(health_confidence_threshold, 0.0, 1.0)
-    safe_limit = max(1, min(health_limit, 50))
-    scope = quote_plus((selected_scope or DASHBOARD_SCOPE_ALL).strip() or DASHBOARD_SCOPE_ALL)
-    return RedirectResponse(
-        url=(
-            f"/dashboard?{msg_key}={quote_plus(msg)}"
-            f"&page={safe_page}"
-            f"&query={quote_plus(query or '')}"
-            f"&selected_scope={scope}"
-            f"&health_stale_days={safe_stale_days}"
-            f"&health_confidence_threshold={safe_confidence:.2f}"
-            f"&health_limit={safe_limit}"
-        ),
-        status_code=303,
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -388,7 +348,8 @@ async def dashboard(
                 cur.execute("SELECT total, active, hot, warm, standard, cold, high_conf, med_conf, low_conf FROM pages_stats_mv")
                 mv_stats = cur.fetchone()
     except Exception:
-        pass
+        logger.warning("dashboard: MV read failed, using fallback", exc_info=True)
+        mv_stats = None
 
     if mv_stats:
         galaxy_high_conf = int(mv_stats[6] or 0)
@@ -409,7 +370,7 @@ async def dashboard(
                             scope_rows.append((row[0], int(row[1])))
                             galaxy_tenants_list.append({"name": format_scope_label(str(row[0])), "count": int(row[1]), "scope": str(row[0])})
         except Exception:
-            pass
+            logger.warning("dashboard: scope MV read failed", exc_info=True)
     if not mv_stats or not galaxy_tenants_list:
         # Fallback: direct queries (cold start, MV not yet populated)
         galaxy_type_data = {}

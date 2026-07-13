@@ -84,8 +84,7 @@ jobs:
         run: |
           python -m unittest tests.test_data_loss_prevention -v
 
-      - name: Run existing test suite (informational)
-        if: always()
+      - name: Run standalone integration tests (gate)
         env:
           API_KEY: test-key-123
           DASHBOARD_PASSWORD: strong-pass!@#
@@ -94,7 +93,7 @@ jobs:
           DB_PASSWORD: test
           EMBEDDING_DIM: ""
         run: |
-          python -m unittest tests.test_main_core tests.test_modules -v || echo "Legacy tests have env-dependent failures (informational)"
+          python -m unittest tests.test_main_core tests.test_modules tests.test_integration -v
 
   docker:
     needs: [test]
