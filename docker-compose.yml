@@ -3,7 +3,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.postgres
-    container_name: gbrain-postgres
+    container_name: hc-sidecar-postgres
     restart: unless-stopped
     ports:
       - "5666:5432"
@@ -43,32 +43,24 @@ services:
       start_period: 10s
 
   pgbouncer:
-    image: bitnami/pgbouncer:latest
-    container_name: gbrain-pgbouncer
+    build:
+      context: .
+      dockerfile: Dockerfile.pgbouncer
+      args:
+        DB_PASSWORD_ARG: ${DB_PASSWORD:?DB_PASSWORD is required}
+    container_name: hc-sidecar-pgbouncer
     restart: unless-stopped
     ports:
-      - "6432:6432"
+      - "6432:5432"
     depends_on:
       db:
         condition: service_healthy
     environment:
-      PGBOUNCER_DATABASE: gbrain
-      PGBOUNCER_PORT: 6432
-      PGBOUNCER_MAX_CLIENT_CONN: 300
-      PGBOUNCER_DEFAULT_POOL_SIZE: 50
-      PGBOUNCER_MAX_DB_CONNECTIONS: 100
-      PGBOUNCER_POOL_MODE: transaction
-      PGBOUNCER_AUTH_TYPE: scram-sha-256
-      PGBOUNCER_QUERY_TIMEOUT: 30
-      POSTGRESQL_USERNAME: postgres
-      POSTGRESQL_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
-      POSTGRESQL_DATABASE: gbrain
-      POSTGRESQL_HOST: db
-      POSTGRESQL_PORT: 5432
+      DB_PASSWORD: ${DB_PASSWORD}
 
   redis:
     image: redis:7-alpine
-    container_name: gbrain-redis
+    container_name: hc-sidecar-redis
     restart: unless-stopped
     ports:
       - "6379:6379"
@@ -98,7 +90,7 @@ services:
       - ${HERMES_DB_PATH_DIR:-/root/.hermes}:/hermes_state:ro
     environment:
       DB_HOST: pgbouncer
-      DB_PORT: 6432
+      DB_PORT: 5432
       DB_NAME: gbrain
       DB_USER: postgres
       DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
@@ -133,7 +125,7 @@ services:
 
   caddy:
     image: caddy:2-alpine
-    container_name: gbrain-caddy
+    container_name: hc-sidecar-caddy
     restart: unless-stopped
     ports:
       - "8010:8010"
@@ -155,7 +147,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.ollama
-    container_name: gbrain-ollama
+    container_name: hc-sidecar-ollama
     restart: unless-stopped
     ports:
       - "11435:11434"
