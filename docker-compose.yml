@@ -18,6 +18,8 @@ services:
       - pgdata:/var/lib/postgresql/data
       # Backup script for safety before auto-update rebuilds
       - ./migrations/backup_db.sh:/docker-entrypoint-initdb.d/99-backup.sh:ro
+      # Pre-rebuild backup exports (survives container rebuild)
+      - pg_backups:/var/lib/postgresql/backups
       # PITR: WAL archive volume for point-in-time recovery
       - pgwal:/var/lib/postgresql/wal_archive
     command: >
@@ -88,6 +90,8 @@ services:
       - /root/workspace/hc-sidecar:/app/repo
       - /root/workspace/hc-sidecar/sync:/app/sync
       - ${HERMES_DB_PATH_DIR:-/root/.hermes}:/hermes_state:ro
+      # Access pre-rebuild backups for startup recovery
+      - pg_backups:/var/lib/postgresql/backups:ro
     environment:
       DB_HOST: pgbouncer
       DB_PORT: 5432
@@ -165,3 +169,4 @@ volumes:
   ollama_data:
   caddy_data:
   pgwal:
+  pg_backups:

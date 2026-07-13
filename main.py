@@ -178,18 +178,49 @@ def startup_event():
         except Exception as ex:
             logger.warning("[IMPORT] Non-fatal error: %s", ex)
 
-        # Auto-recover: import Hermes state.db messages into pages table
-        # if pages count is suspiciously low (data lost after rebuild)
-        # Runs in background thread to avoid blocking server startup
+        # Auto-recover: restore from pre-rebuild backup first, else Hermes state.db
+        # Handles the case where docker rebuild wipes the DB volume.
+        # Runs in background thread to avoid blocking server startup.
         try:
             with connect_db() as conn:
                 with conn.cursor() as cur:
                     cur.execute("SELECT COUNT(*) FROM pages")
                     page_count = cur.fetchone()[0]
             if page_count < 100:
-                logger.warning("[RECOVERY] Only %d pages found — scheduling Hermes state.db import", page_count)
+                logger.warning("[RECOVERY] Only %d pages found — scheduling restore pipeline", page_count)
+
                 def _run_recovery():
-                    import subprocess, sys
+                    import subprocess, sys, os, json
+
+                    # Step 1: Try pre-rebuild backup restore first
+                    backup_script = "/app/repo/migrations/pre_rebuild_backup.py"
+                    if os.path.exists(backup_script):
+                        try:
+                            logger.info("[RECOVERY] Checking for pre-rebuild backup...")
+                            result = subprocess.run(
+                                [sys.executable, backup_script, "restore",
+                                 "--db-host", os.environ.get("DB_HOST", "localhost"),
+                                 "--db-port", os.environ.get("DB_PORT", "5432"),
+                                 "--db-pass", os.environ.get("DB_PASSWORD", ""),
+                                 "--db-name", os.environ.get("DB_NAME", "gbrain"),
+                                 "--db-user", os.environ.get("DB_USER", "postgres")],
+                                capture_output=True, text=True, timeout=300,
+                            )
+                            for line in result.stdout.splitlines():
+                                logger.info("[RECOVERY] %s", line)
+                            if result.returncode == 0:
+                                restored = json.loads(result.stdout.strip().split("\n")[-1])
+                                if restored.get("restored", 0) > 0:
+                                    logger.info("[RECOVERY] Pre-rebuild backup restored %d pages!", restored["restored"])
+                                    return  # Skip state.db import — backup was better
+                            else:
+                                logger.warning("[RECOVERY] Backup restore stderr: %s", result.stderr[:500])
+                        except Exception as ex:
+                            logger.warning("[RECOVERY] Backup restore failed (non-fatal): %s", ex)
+                    else:
+                        logger.info("[RECOVERY] pre_rebuild_backup.py not found — skipping backup restore")
+
+                    # Step 2: Fallback — import Hermes state.db
                     try:
                         result = subprocess.run(
                             [sys.executable, "/app/repo/migrations/import_from_hermes_db.py",
@@ -203,7 +234,8 @@ def startup_event():
                         else:
                             logger.info("[RECOVERY] Hermes state.db import completed successfully")
                     except Exception as ex:
-                        logger.warning("[RECOVERY] Non-fatal error: %s", ex)
+                        logger.warning("[RECOVERY] State.db import failed (non-fatal): %s", ex)
+
                 threading.Thread(target=_run_recovery, daemon=True).start()
         except Exception as ex:
             logger.warning("[RECOVERY] Non-fatal error: %s", ex)
