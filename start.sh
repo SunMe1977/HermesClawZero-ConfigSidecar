@@ -2,12 +2,17 @@
 # Determine the directory where the script is located
 cd "$(dirname "$0")"
 
+RED='\033[0;31m'; GREEN='\033[0;32m'; CYAN='\033[0;36m'; BOLD='\033[1m'; NC='\033[0m'
+
+# OSC 8 clickable link function (iTerm2, kitty, Terminal.app)
+clickable() { printf "\e]8;;%s\a%s\e]8;;\a" "$1" "$2"; }
+
 echo "[START] System Services..."
 
 echo "[START] Cleaning old watchdog processes..."
 pkill -f "python3 sync_watchdog.py" >/dev/null 2>&1 || true
 
-docker compose down
+docker compose down --remove-orphans
 
 PROVIDER=""
 if [ -f .env ]; then
@@ -34,4 +39,14 @@ done
 echo "[START] Launching sync_watchdog.py in background"
 python3 sync_watchdog.py &
 
+echo ""
+echo "============================================"
+printf "  ${BOLD}Dashboard:${NC}  "
+clickable "http://localhost:8010/dashboard" "http://localhost:8010/dashboard"
+echo ""
+printf "  ${BOLD}Health:${NC}     "
+clickable "http://localhost:8010/healthz" "http://localhost:8010/healthz"
+echo ""
+echo "============================================"
 echo "[OK] System running."
+echo ""
