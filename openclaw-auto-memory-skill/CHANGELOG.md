@@ -1,5 +1,25 @@
 # Changelog
 
+## 2.7.0 (2026-07-13)
+
+### Added
+- **Memory Galaxy real content** — hover shows actual stored text, importance, tags, date
+- **Memory Galaxy all nodes** — up to 40 planets per scope, enriched with real data
+- **Playwright dashboard test** — CI verifies dashboard renders without errors
+- **BOM-safe .env writing** — setup.ps1 no longer writes UTF-8 BOM
+
+### Fixed
+- **Galaxy query timeout** — uses PK index (`id > MAX(id)-250`) instead of `ORDER BY created_at`
+- **Non-existent `tags` column** — galaxy items query now uses subquery from `tags` table
+- **Dashboard raw CSS** — fixed broken `</style>` tag that rendered CSS as text
+- **`API_URL` warning** — silenced with empty default in docker-compose
+- **PgBouncer `:latest` pin** — pinned by SHA256 digest (no version tags available)
+
+### Changed
+- **Type hints** added to auth, db, update, embedding_queue, scoring modules
+- **Shared route helpers** extracted to `routes/_shared.py`
+- **Docker builds** — `.dockerignore` reduces image size by ~237MB
+
 ## 2.5.1 (2026-07-13)
 
 ### Added
