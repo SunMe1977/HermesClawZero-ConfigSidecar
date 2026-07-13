@@ -1,5 +1,38 @@
 # Changelog
 
+## 2.6.0 (2026-07-13)
+
+### Added
+- **Pre-Rebuild Backup** — `migrations/pre_rebuild_backup.py` exports all pages before `docker compose down`, restores on startup if DB is empty
+- **Backup-before-rebuild** — `UPDATE_RESTART_COMMAND` now runs `pre_rebuild_backup.py backup` before rebuild
+- **Two-tier recovery** — startup first tries pre-rebuild backup, then falls back to Hermes state.db import
+- **Persistent backup volume** — `pg_backups` volume survives container rebuilds
+
+### Fixed
+- `pre_rebuild_backup.py` uses `psycopg` (v3) matching the project, not `psycopg2`
+- SQL columns match actual `pages` table schema (no phantom columns)
+- SKILL.md version restored to 2.5.1
+
+## 2.5.1 (2026-07-13)
+
+### Added
+- **Multi-Replica API** — Redis + Caddy load balancer, 2 API instances (api1/api2)
+- **PgBouncer custom Dockerfile** — edoburu/pgbouncer with password via build arg, port 5432
+- **Materialized Views** — `pages_stats_mv` + `pages_scope_stats_mv` for dashboard (ms instead of COUNT*)
+- **PITR Backup** — WAL archiving (wal_level=replica, archive_mode=on, pgwal volume)
+- **Async Embedding Queue** — capture returns instantly, batch worker processes in background
+- **HNSW Index Tuning** — m=16→32, ef_construction=400, ef_search×2 for 2M vectors
+- **k6 Load Testing** — `tests/loadtest.js` (200 concurrent users, health/search/capture)
+
+### Changed
+- **Container naming** — `gbrain-*` → `hc-sidecar-*` (consistent with repo name)
+- **API port** — internal 8100, Caddy on 8010 external
+- **Dashboard** — COUNT(*) queries replaced by materialized views
+- **Optimizer** — refreshes MV + auto-tier + dedup every cycle
+- **macOS Setup** — Colima as primary Docker fallback
+
+## 2.5.0 (2026-07-13)
+
 ## 2.4.0 (2026-07-13)
 
 ### Added

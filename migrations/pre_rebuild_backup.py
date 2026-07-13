@@ -1,169 +1,186 @@
 #!/usr/bin/env python3
-"""
-Pre-Rebuild Backup — sichere alle Pages vor einem Container-Neubau.
+"""Pre-Rebuild Backup — export all pages before container rebuild.
 
-Wird VOR docker compose down aufgerufen. Exportiert alle Pages + Embeddings
-als JSON nach /var/lib/postgresql/backups/exports/ (persistentes Volume).
+Called BEFORE docker rebuild via UPDATE_RESTART_COMMAND.
+Exports pages as JSON to a persistent volume that survives rebuilds.
+After rebuild, startup_event checks for backups and restores if DB is empty.
 
-Nach dem Rebuild findet der Startup-Recovery die Datei und stellt sie wieder her.
+Usage:
+    python migrations/pre_rebuild_backup.py backup
+    python migrations/pre_rebuild_backup.py restore
 """
-import json, os, sys, gzip
+import json, os, sys, gzip, logging
 from datetime import datetime
 from pathlib import Path
 
 BACKUP_DIR = Path("/var/lib/postgresql/backups/exports")
-BACKUP_DIR.mkdir(parents=True, exist_ok=True)
 
-def do_backup(db_host="localhost", db_port=5432, db_name="gbrain", db_user="postgres", db_pass=""):
-    import psycopg2
-    conn = psycopg2.connect(
-        host=db_host, port=db_port, dbname=db_name,
-        user=db_user, password=db_pass,
-    )
-    with conn.cursor() as cur:
-        # Pages zählen
-        cur.execute("SELECT COUNT(*) FROM pages")
-        count = cur.fetchone()[0]
-        print(f"[PRE-BACKUP] Pages in DB: {count}")
+# Reuse the project's DB helpers
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+from hermesclaw.db import connect_db, embedding_to_pgvector_literal
+from hermesclaw.config import DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD
 
-        if count == 0:
-            print("[PRE-BACKUP] Nothing to backup — DB is empty")
-            return {"status": "skipped", "reason": "empty", "pages": 0}
-
-        # Alle Pages exportieren
-        cur.execute("""
-            SELECT id, content, memory_type, importance, confidence, frequency,
-                   source, scope_id, created_at, updated_at, archived_at,
-                   metadata, tags, embed_model, sync_status, is_deleted
-            FROM pages ORDER BY id
-        """)
-        rows = cur.fetchall()
-        columns = [desc[0] for desc in cur.description]
-
-        # Embeddings separat (optional — werden beim Import neu generiert)
-        try:
-            cur.execute("SELECT page_id, embedding::text FROM embeddings ORDER BY page_id")
-            embeddings = [{"page_id": r[0], "embedding_str": r[1]} for r in cur.fetchall()]
-        except Exception:
-            embeddings = []
-
-        pages = [dict(zip(columns, row)) for row in rows]
-        # Datumsfelder serialisierbar machen
-        for p in pages:
-            for k in ("created_at", "updated_at", "archived_at"):
-                if p.get(k):
-                    p[k] = p[k].isoformat()
-
-        backup = {
-            "version": 2,
-            "exported_at": datetime.utcnow().isoformat(),
-            "page_count": len(pages),
-            "embedding_count": len(embeddings),
-            "pages": pages,
-            "embeddings": embeddings,
-        }
-
-        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-        path = BACKUP_DIR / f"pre_rebuild_{ts}.json.gz"
-        with gzip.open(path, "wt", encoding="utf-8") as f:
-            json.dump(backup, f, ensure_ascii=False)
-
-        size_mb = path.stat().st_size / 1024 / 1024
-        print(f"[PRE-BACKUP] Saved {len(pages)} pages + {len(embeddings)} embeddings → {path.name} ({size_mb:.1f} MB)")
-
-        # Alte Backups aufräumen (älter als 7 Tage)
-        cutoff = datetime.now().timestamp() - 7 * 86400
-        for f in BACKUP_DIR.glob("pre_rebuild_*.json.gz"):
-            if f.stat().st_mtime < cutoff:
-                f.unlink()
-                print(f"[PRE-BACKUP] Cleaned old backup: {f.name}")
-
-    conn.close()
-    return {"status": "ok", "pages": len(pages), "embeddings": len(embeddings), "path": str(path)}
+logger = logging.getLogger("pre_rebuild_backup")
 
 
-def do_restore(db_host="localhost", db_port=5432, db_name="gbrain", db_user="postgres", db_pass=""):
-    """Finde das neueste Pre-Rebuild Backup und stelle es wieder her."""
+def do_backup():
+    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+
+    with connect_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT COUNT(*) FROM pages WHERE is_archived = FALSE")
+            count = cur.fetchone()[0]
+            print(f"[PRE-BACKUP] Active pages: {count}")
+
+            if count == 0:
+                print("[PRE-BACKUP] Nothing to backup")
+                return {"status": "skipped", "reason": "empty", "pages": 0}
+
+            # Export active pages (all schema columns we have)
+            cur.execute("""
+                SELECT id, content, memory_type, importance, confidence, frequency,
+                       sentiment, source, scope_id, chat_id, memory_tier,
+                       stability, ttl_days, content_hash, summary_text, compressed_content,
+                       parent_id, valid_to, superseded_by,
+                       created_at, updated_at, last_used, last_access, last_retrieved
+                FROM pages
+                WHERE is_archived = FALSE
+                ORDER BY id
+            """)
+            rows = cur.fetchall()
+            columns = [desc[0] for desc in cur.description]
+
+            # Serialize datetimes
+            def _serialize(val):
+                if hasattr(val, 'isoformat'):
+                    return val.isoformat()
+                return val
+
+            pages = []
+            for row in rows:
+                page = {}
+                for i, col in enumerate(columns):
+                    page[col] = _serialize(row[i])
+                pages.append(page)
+
+            backup = {
+                "version": 3,
+                "exported_at": datetime.utcnow().isoformat(),
+                "page_count": len(pages),
+                "pages": pages,
+            }
+
+            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+            path = BACKUP_DIR / f"pre_rebuild_{ts}.json.gz"
+            with gzip.open(path, "wt", encoding="utf-8") as f:
+                json.dump(backup, f, ensure_ascii=False)
+
+            size_mb = path.stat().st_size / 1024 / 1024
+            print(f"[PRE-BACKUP] Saved {len(pages)} pages -> {path.name} ({size_mb:.1f} MB)")
+
+            # Clean old backups (>7 days)
+            cutoff = datetime.now().timestamp() - 7 * 86400
+            for f in BACKUP_DIR.glob("pre_rebuild_*.json.gz"):
+                if f.stat().st_mtime < cutoff:
+                    f.unlink()
+                    print(f"[PRE-BACKUP] Cleaned: {f.name}")
+
+    return {"status": "ok", "pages": len(pages), "path": str(path)}
+
+
+def do_restore():
+    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
     backups = sorted(BACKUP_DIR.glob("pre_rebuild_*.json.gz"), reverse=True)
     if not backups:
-        print("[POST-RESTORE] No pre-rebuild backup found — skipping restore")
+        print("[RECOVERY] No pre-rebuild backup found")
         return {"status": "skipped", "reason": "no_backup_found"}
 
     latest = backups[0]
-    print(f"[POST-RESTORE] Found backup: {latest.name}")
+    print(f"[RECOVERY] Found backup: {latest.name}")
 
-    import psycopg2
-    conn = psycopg2.connect(
-        host=db_host, port=db_port, dbname=db_name,
-        user=db_user, password=db_pass,
-    )
-    with conn.cursor() as cur:
-        # Prüfen ob DB leer ist
-        cur.execute("SELECT COUNT(*) FROM pages")
-        current_count = cur.fetchone()[0]
-        if current_count > 100:
-            print(f"[POST-RESTORE] DB already has {current_count} pages — skipping restore")
-            conn.close()
-            return {"status": "skipped", "reason": "db_not_empty", "current_pages": current_count}
+    with connect_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT COUNT(*) FROM pages")
+            current = cur.fetchone()[0]
+            if current > 100:
+                print(f"[RECOVERY] DB has {current} pages, skipping restore")
+                return {"status": "skipped", "reason": "not_empty", "current": current}
 
-        # Backup laden
-        with gzip.open(latest, "rt", encoding="utf-8") as f:
-            backup = json.load(f)
+            with gzip.open(latest, "rt", encoding="utf-8") as f:
+                backup = json.load(f)
 
-        pages = backup["pages"]
-        print(f"[POST-RESTORE] Restoring {len(pages)} pages from {latest.name}...")
+            pages = backup["pages"]
+            print(f"[RECOVERY] Restoring {len(pages)} pages...")
 
-        restored = 0
-        errors = 0
-        for p in pages:
-            try:
-                cur.execute("""
-                    INSERT INTO pages (id, content, memory_type, importance, confidence, frequency,
-                                       source, scope_id, created_at, updated_at,
-                                       metadata, tags, embed_model, sync_status)
-                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                    ON CONFLICT (id) DO NOTHING
-                """, (
-                    p["id"], p["content"], p.get("memory_type", "conversation"),
-                    p.get("importance", 0.5), p.get("confidence", 0.7), p.get("frequency", 1),
-                    p.get("source"), p.get("scope_id"),
-                    p.get("created_at"), p.get("updated_at"),
-                    json.dumps(p.get("metadata") or {}),
-                    json.dumps(p.get("tags") or []),
-                    p.get("embed_model"), p.get("sync_status", "active"),
-                ))
-                restored += 1
-            except Exception as e:
-                errors += 1
-                if errors <= 3:
-                    print(f"[POST-RESTORE] Error on page {p.get('id')}: {e}")
+            restored = 0
+            errors = 0
+            for p in pages:
+                try:
+                    cur.execute("""
+                        INSERT INTO pages (
+                            content, memory_type, importance, confidence, frequency,
+                            sentiment, source, scope_id, chat_id, memory_tier,
+                            stability, ttl_days, content_hash, summary_text, compressed_content,
+                            parent_id, valid_to, superseded_by,
+                            created_at, updated_at, last_used, last_access, last_retrieved
+                        ) VALUES (
+                            %(content)s, %(memory_type)s, %(importance)s, %(confidence)s,
+                            %(frequency)s, %(sentiment)s, %(source)s, %(scope_id)s,
+                            %(chat_id)s, %(memory_tier)s, %(stability)s, %(ttl_days)s,
+                            %(content_hash)s, %(summary_text)s, %(compressed_content)s,
+                            %(parent_id)s, %(valid_to)s, %(superseded_by)s,
+                            %(created_at)s, %(updated_at)s, %(last_used)s, %(last_access)s,
+                            %(last_retrieved)s
+                        )
+                    """, {
+                        "content": p.get("content", ""),
+                        "memory_type": p.get("memory_type", "conversation"),
+                        "importance": p.get("importance", 0.5),
+                        "confidence": p.get("confidence", 0.8),
+                        "frequency": p.get("frequency", 1),
+                        "sentiment": p.get("sentiment", 0.0),
+                        "source": p.get("source", "backup_restore"),
+                        "scope_id": p.get("scope_id"),
+                        "chat_id": p.get("chat_id", "global"),
+                        "memory_tier": p.get("memory_tier", "standard"),
+                        "stability": p.get("stability", 1.0),
+                        "ttl_days": p.get("ttl_days"),
+                        "content_hash": p.get("content_hash"),
+                        "summary_text": p.get("summary_text"),
+                        "compressed_content": p.get("compressed_content"),
+                        "parent_id": p.get("parent_id"),
+                        "valid_to": p.get("valid_to"),
+                        "superseded_by": p.get("superseded_by"),
+                        "created_at": p.get("created_at"),
+                        "updated_at": p.get("updated_at"),
+                        "last_used": p.get("last_used"),
+                        "last_access": p.get("last_access"),
+                        "last_retrieved": p.get("last_retrieved"),
+                    })
+                    restored += 1
+                except Exception as e:
+                    errors += 1
+                    if errors <= 3:
+                        print(f"[RECOVERY] Error on page {p.get('id','?')}: {e}")
 
-        conn.commit()
-        print(f"[POST-RESTORE] Restored {restored} pages ({errors} errors)")
-        print(f"[POST-RESTORE] Embeddings will be regenerated automatically by the worker")
+            conn.commit()
+            print(f"[RECOVERY] Restored {restored} pages ({errors} errors)")
+            print(f"[RECOVERY] Embeddings will regenerate via background worker")
 
-    conn.close()
-
-    # Backup als verarbeitet markieren
     latest.rename(latest.with_suffix(".json.gz.restored"))
     return {"status": "ok", "restored": restored, "errors": errors, "from": latest.name}
 
 
 if __name__ == "__main__":
     import argparse
-    parser = argparse.ArgumentParser(description="Pre-Rebuild Backup / Post-Rebuild Restore")
+    parser = argparse.ArgumentParser()
     parser.add_argument("action", choices=["backup", "restore"])
-    parser.add_argument("--db-host", default=os.environ.get("DB_HOST", "localhost"))
-    parser.add_argument("--db-port", default=os.environ.get("DB_PORT", "5432"))
-    parser.add_argument("--db-name", default=os.environ.get("DB_NAME", "gbrain"))
-    parser.add_argument("--db-user", default=os.environ.get("DB_USER", "postgres"))
-    parser.add_argument("--db-pass", default=os.environ.get("DB_PASSWORD", ""))
     args = parser.parse_args()
 
     if args.action == "backup":
-        result = do_backup(args.db_host, args.db_port, args.db_name, args.db_user, args.db_pass)
+        result = do_backup()
     else:
-        result = do_restore(args.db_host, args.db_port, args.db_name, args.db_user, args.db_pass)
+        result = do_restore()
 
     print(json.dumps(result))
-    sys.exit(0 if result.get("status") == "ok" or result.get("status") == "skipped" else 1)
+    sys.exit(0 if result.get("status") in ("ok", "skipped") else 1)
