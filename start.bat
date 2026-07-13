@@ -8,7 +8,7 @@ set "PROVIDER="
 set "ENV_API_KEY="
 set "ENV_DASHBOARD_PASSWORD="
 set "ENV_DASHBOARD_SESSION_SECRET="
-for /f "tokens=1,* delims==" %%A in (.env) do (
+for /f "tokens=1,* delims==" %%A in ('powershell -NoProfile -Command "Get-Content .env | ForEach-Object { $_.TrimStart([char]0xFEFF) }"') do (
 	if /I "%%A"=="AI_PROVIDER" set "PROVIDER=%%B"
 	if /I "%%A"=="API_KEY" set "ENV_API_KEY=%%B"
 	if /I "%%A"=="DASHBOARD_PASSWORD" set "ENV_DASHBOARD_PASSWORD=%%B"
