@@ -105,7 +105,7 @@ services:
       DB_POOL_TIMEOUT: ${DB_POOL_TIMEOUT:-30}
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      API_URL: ${API_URL}
+      API_URL: ${API_URL:-}
       API_KEY: ${API_KEY:?API_KEY is required}
       DASHBOARD_SESSION_SECRET: ${DASHBOARD_SESSION_SECRET:-DagD2b1Jg+ZSzVoaaL5/MdzcNJvro4jnUpIXi9Fm2S4=}
       AI_PROVIDER: ${COMPOSE_AI_PROVIDER:-${AI_PROVIDER:-openrouter}}
