@@ -3,6 +3,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.postgres
+      args:
+        PGVECTOR_IMAGE: ${PGVECTOR_IMAGE:-pgvector/pgvector:0.8.0-pg17}
     container_name: hc-sidecar-postgres
     restart: unless-stopped
     ports:
