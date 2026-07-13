@@ -23,6 +23,7 @@ Thumbs.db
 
 # Editor
 .vscode/
+*.swp
 
 # Raw / generated
 raw/
@@ -32,3 +33,5 @@ knowledge/
 node
 npm
 pnpm
+sidecar.sh
+sync_failed_ids.json
