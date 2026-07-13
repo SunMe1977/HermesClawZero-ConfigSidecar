@@ -53,14 +53,16 @@ if not errorlevel 1 (
 
 if /I "%PROVIDER%"=="ollama" (
     echo [START] AI_PROVIDER=ollama ^> starting with Ollama profile
-    docker compose %PG_BUILD_ARG% --profile ollama up --build -d
+    if not "%PG_BUILD_ARG%"=="" docker compose %PG_BUILD_ARG% build db
+    docker compose --profile ollama up --build -d
 ) else (
     if "%PROVIDER%"=="" (
         echo [START] AI_PROVIDER is unset ^> starting without Ollama container
     ) else (
         echo [START] AI_PROVIDER=%PROVIDER% ^> starting without Ollama container
     )
-    docker compose %PG_BUILD_ARG% up --build -d
+    if not "%PG_BUILD_ARG%"=="" docker compose %PG_BUILD_ARG% build db
+    docker compose up --build -d
 )
 
 echo [START] Waiting for API health at http://localhost:8010/healthz ...
