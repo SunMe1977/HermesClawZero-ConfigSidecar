@@ -396,6 +396,7 @@ async def dashboard(
         galaxy_low_conf = int(mv_stats[8] or 0)
         tier_stats = {"hot": mv_stats[2] or 0, "warm": mv_stats[3] or 0,
                       "standard": mv_stats[4] or 0, "cold": mv_stats[5] or 0}
+        galaxy_type_data = {}
         # Use scope MV for tenant list
         scope_rows = []
         galaxy_tenants_list = []
