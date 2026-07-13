@@ -419,27 +419,27 @@ async def dashboard(
         galaxy_high_conf = galaxy_med_conf = galaxy_low_conf = 0
 
     # Recent pages for galaxy node content (up to 200)
+    # Recent pages for galaxy node content (up to 800)
     galaxy_items = []
     try:
         with connect_db() as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     "SELECT id, content, scope_id, memory_type, importance, confidence, sentiment, created_at, tags "
-                    "FROM pages WHERE is_archived = FALSE AND id > (SELECT COALESCE(MAX(id) - 250, 0) FROM pages) "
-                    "ORDER BY id DESC LIMIT 200"
+                    "FROM pages WHERE is_archived = FALSE ORDER BY created_at DESC LIMIT 800"
                 )
                 for row in cur.fetchall():
                     tags_list = (row[8] or "").split(",") if row[8] else []
                     galaxy_items.append({
                         "id": row[0],
-                        "content": (row[1] or "")[:120],
+                        "content": (row[1] or "")[:200],
                         "scope": row[2] or "unknown",
                         "type": row[3] or "fact",
                         "importance": float(row[4] or 0),
                         "confidence": float(row[5] or 0),
                         "sentiment": float(row[6] or 0),
                         "ts": str(row[7]) if row[7] else "",
-                        "tags": tags_list[:3],
+                        "tags": tags_list[:5],
                     })
     except Exception as ex:
         logger.warning("galaxy items load failed: %s", ex, exc_info=True)
