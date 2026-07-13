@@ -33,25 +33,26 @@ if "%ENV_DASHBOARD_SESSION_SECRET%"=="%ENV_API_KEY%" (
 )
 
 echo [START] System Services...
-docker compose down
+docker compose down --remove-orphans
 
 if /I "%PROVIDER%"=="ollama" (
-	echo [START] AI_PROVIDER=ollama ^> starting with Ollama profile
-	docker compose --profile ollama up --build -d
+    echo [START] AI_PROVIDER=ollama ^> starting with Ollama profile
+    docker compose --profile ollama up --build -d
 ) else (
-	if "%PROVIDER%"=="" (
-		echo [START] AI_PROVIDER is unset ^> starting without Ollama container
-	) else (
-		echo [START] AI_PROVIDER=%PROVIDER% ^> starting without Ollama container
-	)
-	docker compose up --build -d
+    if "%PROVIDER%"=="" (
+        echo [START] AI_PROVIDER is unset ^> starting without Ollama container
+    ) else (
+        echo [START] AI_PROVIDER=%PROVIDER% ^> starting without Ollama container
+    )
+    docker compose up --build -d
 )
 
 echo [START] Waiting for API health at http://localhost:8010/healthz ...
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$ok=$false; for($i=0; $i -lt 30; $i++){ try { $r=Invoke-WebRequest -UseBasicParsing -Uri 'http://localhost:8010/healthz' -TimeoutSec 2; if($r.StatusCode -ge 200 -and $r.StatusCode -lt 400){ $ok=$true; break } } catch {}; Start-Sleep -Seconds 1 }; if($ok){ Write-Host '[START] API is healthy.'; exit 0 } else { Write-Host '[ERROR] API health check timed out. Showing API logs:'; exit 1 }"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$ok=$false; for($i=0; $i -lt 30; $i++){ try { $r=Invoke-WebRequest -UseBasicParsing -Uri 'http://localhost:8010/healthz' -TimeoutSec 2; if($r.StatusCode -ge 200 -and $r.StatusCode -lt 400){ $ok=$true; break } } catch {}; Start-Sleep -Seconds 3 }; if($ok){ Write-Host '[START] API is healthy.'; exit 0 } else { Write-Host '[ERROR] API health check timed out. Showing API logs:'; exit 1 }"
 if errorlevel 1 (
-	docker compose logs api --tail=80
-	exit /b 1
+    docker compose logs caddy --tail=30
+    docker compose logs api1 --tail=20
+    exit /b 1
 )
 
 echo [START] Launching sync_watchdog.py in background
