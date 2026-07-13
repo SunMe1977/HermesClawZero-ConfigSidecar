@@ -71,6 +71,12 @@ if errorlevel 1 (
     exit /b 1
 )
 
+echo [START] Waiting for Caddy upstreams...
+powershell -NoProfile -ExecutionPolicy Bypass -Command "for($i=0; $i -lt 15; $i++){ try { $r=Invoke-WebRequest -UseBasicParsing -Uri 'http://localhost:8010/healthz' -TimeoutSec 2; if($r.StatusCode -eq 200){ exit 0 } } catch {}; Start-Sleep -Seconds 1 }; exit 1"
+if errorlevel 1 (
+    echo [WARN] Caddy upstreams still warming up — continuing anyway
+)
+
 echo [START] Launching sync_watchdog.py in background
 start "" python sync_watchdog.py
 
