@@ -423,7 +423,6 @@ async def dashboard(
     try:
         with connect_db() as conn:
             with conn.cursor() as cur:
-                cur.execute("SET statement_timeout = '5s'")
                 cur.execute(
                     "SELECT id, content, scope_id, memory_type, importance, confidence, sentiment, created_at, tags "
                     "FROM pages WHERE is_archived = FALSE AND id > (SELECT COALESCE(MAX(id) - 250, 0) FROM pages) "
