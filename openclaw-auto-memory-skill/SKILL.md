@@ -5,8 +5,37 @@ version: "3.0.0"
 tags:
   - memory
   - hermes
-  - persistence
-  - vector-search
+  - auto-capture
+  - governance
+enforce:
+  - priority: critical
+    rule: "Agent MUSS alle enforce-Regeln befolgen; sie stehen über Memory."
+    policy:
+      tool: "*"
+      pattern: "*"
+      action: allow
+      reason: "Foundation rule — enables all other policies."
+  - priority: critical
+    rule: "Keine kritischen Aktionen ohne explizite Zustimmung im selben Turn."
+    policy:
+      tool: terminal
+      pattern: "git push*|git merge*|git reset*|rm -*|docker system prune*|docker volume rm*|docker image rm*"
+      action: deny
+      reason: "Destructive git/Docker operations require explicit user approval."
+  - priority: high
+    rule: "Vor jeder Dateiänderung, Commit oder destruktiven Aktion Bestätigung einholen."
+    policy:
+      tool: terminal|file
+      pattern: "git commit*|git push*|rm *|mv *|cp *|chmod*|chown*"
+      action: prompt
+      reason: "Ask user before modifying files or git state."
+  - priority: high
+    rule: "User-Korrekturen sofort als Memory speichern."
+    policy:
+      tool: memory
+      pattern: "correction|wrong|fix|error"
+      action: always
+      reason: "User feedback must be persisted immediately."
 categories:
   - agents
   - knowledge
@@ -24,7 +53,7 @@ Automatically captures conversation context to HermesClawZero DB so the agent re
 
 > 🌌 **New in v1.4.0:** Interactive **Memory Galaxy** dashboard — full-screen animated Canvas visualization with tenant orbits, glowing nodes, nebula shader, hover info cards, zoom & idle rotation.
 
-> ⚡ **New in v3.0.0: Enforceable Skill Rules** — Skills can now define enforced `priority: critical` rules that the agent **must** follow. Rules appear as structured directives above memory, making them impossible to ignore.
+> ⚡ **New in v3.0.0 — Enforce Governance Layer** — A priority-based governance system that makes agent behavior more stable and safe. Enforce rules sit above memory and cannot be ignored by the agent.
 
 > **🧠 Shared Brain**
 
@@ -41,6 +70,9 @@ https://github.com/SunMe1977/HermesClawZero-ConfigSidecar
 After ~30s open → [`http://localhost:8010/dashboard`](http://localhost:8010/dashboard)
 
 > **🧠 Shared Brain** — Hermes and OpenClaw share the same memory store simultaneously.
+>
+> **v3.0.0 führt enforce-Regeln ein. Alte Memory-Regeln entfernt. Enforce ist jetzt die verbindliche Governance-Schicht.**
+>
 > Both agents' memories appear side by side in the Dashboard with platform icons
 > (⚡ Hermes, 🐙 OpenClaw). Each sees only its own scope by default, the "All scopes"
 > view gives you the complete shared brain. No extra setup needed.
@@ -63,8 +95,8 @@ After ~30s open → [`http://localhost:8010/dashboard`](http://localhost:8010/da
 | **Multi-tenant** | Hermes, OpenClaw and other agents share the same DB, isolated by scope |
 | **Automated capture** | New conversations are captured and embedded automatically |
 | **Memory optimization** | Built-in tiering (hot/warm/cold), decay, archiving, consolidation |
-| **Configurable governance** | Enforceable skill rules so agents follow critical instructions |
-| **Dashboard & visualization** | Memory Galaxy, health monitoring, search, manual review |
+| **Configurable governance** | Enforceable skill rules (`scripts/enforce_loader.py` / `scripts/policy_plugin.py`) so agents follow critical instructions |
+| **Dashboard & visualization** | Memory Galaxy, health monitoring, search, manual review, click-to-edit |
 | **Vector search** | pgvector-powered semantic search across all memories |
 | **Modular architecture** | FastAPI + Docker Compose, designed for self-hosted deployment |
 
