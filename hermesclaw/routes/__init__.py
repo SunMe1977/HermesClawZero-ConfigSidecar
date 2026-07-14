@@ -39,6 +39,21 @@ from hermesclaw.export import export_memories
 
 logger = logging.getLogger("hermesclaw.routes")
 
+# Schema migration — runs ALTER TABLE once per process lifetime, skip on lock contention
+_SCHEMA_CHECKED = False
+
+
+def _ensure_schema_once():
+    global _SCHEMA_CHECKED
+    if _SCHEMA_CHECKED:
+        return
+    try:
+        ensure_phase1_schema()
+    except Exception:
+        logger.warning("Schema migration skipped (lock contention)")
+    _SCHEMA_CHECKED = True
+
+
 router = APIRouter()
 
 _CHANGE_SECRET = threading.Event()
@@ -235,7 +250,8 @@ async def dashboard(
 
     list_scope_clause, list_scope_params = build_scope_filter(active_scope, "scope_id")
     try:
-        ensure_phase1_schema()
+        # Schema setup — only runs ALTER TABLE once (skipped if already done)
+        _ensure_schema_once()
 
         review = get_optimizer_review(
             limit=safe_health_limit, stale_days=safe_health_stale_days,
