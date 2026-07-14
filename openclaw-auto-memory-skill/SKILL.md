@@ -18,7 +18,7 @@ enforce:
       reason: "Foundation rule — enables all other policies."
   - id: deny-destructive-git-docker
     priority: critical
-    rule: "Keine kritischen Aktionen ohne explizite Zustimmung im selben Turn."
+    rule: "Terminal: git push, merge, reset, destructive rm, and Docker prune/rm are blocked."
     policy:
       tool: terminal
       pattern: "git push*|git merge*|git reset*|rm -*|docker system prune*|docker volume rm*|docker image rm*"

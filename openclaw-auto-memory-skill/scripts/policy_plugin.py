@@ -221,5 +221,10 @@ def get_pre_tool_call_block_message(
         _log_decision("prompted", function_name, action, pid, reason)
         return f"⚠️ [{pid}] Policy requires approval: {reason}"
 
-    _log_decision("allowed", function_name, action, "", "")
+    # Only log "allowed" for dangerous tool categories to avoid flooding
+    if result["allow"] is True and function_name in ("terminal", "exec", "write_file", "patch", "delete", "edit", "apply_patch", "docker", "git"):
+        _log_decision("allowed", function_name, action, "", "")
+    elif result["allow"] is True:
+        pass  # skip audit for safe tools (read, search, list, etc.)
+
     return None  # Allowed — Hermes proceeds normally
