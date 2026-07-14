@@ -1180,7 +1180,7 @@ POLICY_AUDIT_PATH = os.path.join(
 )
 
 
-@app.get("/policy/audit")
+@router.get("/policy/audit")
 async def policy_audit(limit: int = 50):
     """Return the last N entries from the Policy Engine audit log."""
     if not os.path.exists(POLICY_AUDIT_PATH):
