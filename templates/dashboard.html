@@ -614,7 +614,8 @@
     <div id="ghcTenant" style="font-size:11px; color:#a78bfa; font-weight:600; margin-bottom:4px;"></div>
     <div id="ghcContent" style="font-size:12px; color:#e8e0ff; line-height:1.4; margin-bottom:6px;"></div>
     <div id="ghcMeta" style="font-size:10px; color:rgba(200,180,255,0.5); display:flex; gap:10px;"></div>
-  </div>
+    <div style="font-size:9px; color:rgba(200,180,255,0.25); margin-top:4px; border-top:1px solid rgba(200,180,255,0.08); padding-top:4px;">Click planet → edit</div>
+    </div>
 </div>
 
 <script>
@@ -972,7 +973,8 @@ function drawGalaxy(time) {
       const px = cxNd + Math.cos(theta) * (r + rOff);
       const py = cyNd + Math.sin(theta) * (r * o.tilt + rOff * o.tilt);
       const pulse = 0.6 + 0.4 * Math.sin(time * node.pulseSpeed + node.pulsePhase);
-      const size = node.size * pulse;
+      const hoverBoost = (hoverOrbit === oi && hoverNode === ni) ? 2.5 : 1;
+      const size = node.size * pulse * hoverBoost;
 
       // Track for hover
       allNodePts.push({ x: px, y: py, oi, ni, node, orbit: o, size, pulse });
@@ -1014,7 +1016,7 @@ function drawGalaxy(time) {
 
   // Hover detection (use physical mouse coords)
   const mpx = (mx + 1) / 2 * W, mpy = (my + 1) / 2 * H;
-  let hoverDist = 50;
+  let hoverDist = 80;
   allNodePts.forEach(pt => {
     const d = Math.hypot(pt.x - mpx, pt.y - mpy);
     if (d < hoverDist) { hoverDist = d; hoverNode = pt.ni; hoverOrbit = pt.oi; }
@@ -1208,11 +1210,64 @@ document.addEventListener('mousemove', e => {
 document.addEventListener('wheel', e => {
   if (!galaxyActive) return;
   e.preventDefault();
-  targetZoom = Math.max(0.3, Math.min(3, targetZoom - e.deltaY * 0.002));
+  targetZoom = Math.max(0.1, Math.min(8, targetZoom - e.deltaY * 0.003));
 }, { passive: false });
+
+// ─── Click on a planet → open detail modal ───
+document.addEventListener('click', e => {
+  if (!galaxyActive || hoverOrbit < 0 || hoverNode < 0) return;
+  const o = orbits[hoverOrbit];
+  if (!o || !o.nodes[hoverNode]) return;
+  const node = o.nodes[hoverNode];
+  const fullText = node.item ? node.item.content : node.label;
+  if (!fullText || fullText === '…') return;
+  document.getElementById('editId').value = node.item ? node.item.id : '';
+  document.getElementById('editContent').value = fullText;
+  document.getElementById('editType').value = node.item ? node.item.type : 'fact';
+  document.getElementById('editorOverlay').style.display = 'block';
+  document.getElementById('editorModal').style.display = 'block';
+});
 
 window.addEventListener('resize', () => { if (galaxyActive) resizeGalaxy(); });
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && galaxyActive) toggleGalaxy(); });
+</script>
+
+<!-- ── Governance Section (only shown when PolicyEngine plugin is active) ─── -->
+<script>
+(async function() {
+  try {
+    const r = await fetch('/policy/audit?limit=10');
+    const d = await r.json();
+    if (!d.active) return;
+    const section = document.createElement('div');
+    section.id = 'governance-section';
+    section.style.cssText = 'background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:20px;margin:20px 0;';
+    let html = '<h2 style="font-size:15px;font-weight:600;margin-bottom:14px;color:var(--text-primary);display:flex;align-items:center;gap:8px;">⚙️ Governance — Policy Engine Audit</h2>';
+    if (!d.entries || d.entries.length === 0) {
+      html += '<p style="color:var(--text-muted);font-size:12px;">No policy decisions yet. Start using the agent — every tool call is audited.</p>';
+    } else {
+      html += '<div style="max-height:300px;overflow-y:auto;font-family:monospace;font-size:11px;line-height:1.6;">';
+      d.entries.forEach(e => {
+        const icon = e.decision === 'blocked' ? '⛔' : e.decision === 'prompted' ? '⚠️' : '✅';
+        html += `<div style="padding:4px 0;border-bottom:1px solid var(--border);display:flex;gap:8px;">
+          <span>${icon}</span>
+          <span style="color:var(--text-muted);min-width:160px;">${(e.ts||'').slice(0,19)}</span>
+          <span style="color:${e.decision==='blocked'?'var(--accent-red)':'var(--text-primary)'};min-width:70px;">${e.decision}</span>
+          <span style="color:var(--accent-purple);min-width:80px;">${e.policy_id||'-'}</span>
+          <span style="color:var(--accent-cyan);min-width:80px;">${e.tool||''}</span>
+          <span style="color:var(--text-secondary);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${(e.reason||'').slice(0,80)}</span>
+        </div>`;
+      });
+      html += '</div>';
+    }
+    section.innerHTML = html;
+    const gc = document.getElementById('galaxy-container');
+    if (gc) gc.parentNode.insertBefore(section, gc.nextSibling);
+    else document.querySelector('.app-wrap').appendChild(section);
+  } catch(e) {
+    // Plugin not active — don't show governance section
+  }
+})();
 </script>
 
 </body>

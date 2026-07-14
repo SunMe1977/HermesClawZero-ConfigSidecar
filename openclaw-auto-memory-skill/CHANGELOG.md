@@ -4,6 +4,12 @@
 
 ### Breaking
 - **Enforceable Skill Rules** — Skills can now define `enforce:` rules with `priority: critical`. Rules appear as structured directives above memory in every turn. Agents must follow them.
+- **Loader ready** — `scripts/enforce_loader.py` parses SKILL.md frontmatter and outputs injectable YOU-MUST directives.
+- **Kaskadierung** — Child skills inherit enforce rules from parent skills. Loader scans all loaded skills.
+
+### Added
+- **scripts/enforce_loader.py** — CLI tool to extract enforce rules from any installed skill
+- **README enforce notice** — v3.0.0 führt enforce-Regeln ein. Alte Memory-Regeln entfernt. Enforce ist jetzt die Governance-Schicht.
 
 ### Fixed
 - **Galaxy "loading" fix** — scope mapping now correctly matches unscoped items (`__unscoped__`), all items loaded (up to 20000), deadlock protection via lock_timeout

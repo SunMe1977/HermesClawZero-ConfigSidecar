@@ -8,28 +8,32 @@ tags:
   - auto-capture
   - governance
 enforce:
-  - priority: critical
+  - id: foundation-rule
+    priority: critical
     rule: "Agent MUSS alle enforce-Regeln befolgen; sie stehen über Memory."
     policy:
       tool: "*"
       pattern: "*"
       action: allow
       reason: "Foundation rule — enables all other policies."
-  - priority: critical
+  - id: deny-destructive-git-docker
+    priority: critical
     rule: "Keine kritischen Aktionen ohne explizite Zustimmung im selben Turn."
     policy:
       tool: terminal
       pattern: "git push*|git merge*|git reset*|rm -*|docker system prune*|docker volume rm*|docker image rm*"
       action: deny
       reason: "Destructive git/Docker operations require explicit user approval."
-  - priority: high
+  - id: prompt-file-changes
+    priority: high
     rule: "Vor jeder Dateiänderung, Commit oder destruktiven Aktion Bestätigung einholen."
     policy:
       tool: terminal|file
       pattern: "git commit*|git push*|rm *|mv *|cp *|chmod*|chown*"
       action: prompt
       reason: "Ask user before modifying files or git state."
-  - priority: high
+  - id: persist-corrections
+    priority: high
     rule: "User-Korrekturen sofort als Memory speichern."
     policy:
       tool: memory

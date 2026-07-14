@@ -1,19 +1,15 @@
 """
-policy_plugin.py — Hermes Agent Policy Engine Plugin
+policy_plugin.py — Hermes Agent Policy Engine Plugin v2
 
 Drop this file into ~/.hermes/plugins/ to activate runtime policy enforcement.
 When the Hermes Agent PR is merged, this becomes native.
 
-How it works:
-1. On load, scans all installed skills for `enforce:` frontmatter
-2. Registers policies (tool/pattern/action/priority)
-3. Every tool call is checked against active policies
-4. Blocked actions return an error, prompted actions ask user
-
-Backward compatible: if no skill has enforce rules, this plugin is a no-op.
+Includes: Policy IDs, Schema Version (2), Audit Logging, Priority-Weighted Resolution.
 """
 
+import datetime
 import fnmatch
+import json
 import logging
 import os
 from pathlib import Path
@@ -24,11 +20,72 @@ try:
 except ImportError:
     yaml = None
 
-logger = logging.getLogger("policy_plugin")
+# ── Schema version ────────────────────────────────────────────────────────
+POLICY_SCHEMA_VERSION = 2
 
+# ── Logging ───────────────────────────────────────────────────────────────
+_POLICY_LOG_PATH: Optional[str] = None
+
+
+def _get_log_path() -> str:
+    global _POLICY_LOG_PATH
+    if _POLICY_LOG_PATH is None:
+        hermes_home = os.environ.get("HERMES_HOME", os.path.expanduser("~/.hermes"))
+        _POLICY_LOG_PATH = os.path.join(hermes_home, "policy_audit.jsonl")
+    return _POLICY_LOG_PATH
+
+
+def _log_decision(
+    decision: str,       # "blocked" | "allowed" | "prompted"
+    tool: str,
+    action: str,
+    policy_id: str,
+    reason: str,
+    rule: str = "",
+):
+    """Append one audit line to ~/.hermes/policy_audit.jsonl."""
+    entry = {
+        "ts": datetime.datetime.utcnow().isoformat() + "Z",
+        "decision": decision,
+        "tool": tool,
+        "action": action[:200],
+        "policy_id": policy_id or "-",
+        "reason": reason,
+        "rule": rule[:200],
+        "schema_version": POLICY_SCHEMA_VERSION,
+    }
+    try:
+        log_path = _get_log_path()
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    except Exception:
+        pass  # Logging must never block execution
+
+
+def read_audit_log(lines: int = 50) -> list[dict]:
+    """Read last N entries from policy_audit.jsonl."""
+    log_path = _get_log_path()
+    if not os.path.exists(log_path):
+        return []
+    try:
+        with open(log_path, encoding="utf-8") as f:
+            all_lines = [l.strip() for l in f if l.strip()]
+        result = []
+        for l in all_lines[-lines:]:
+            try:
+                result.append(json.loads(l))
+            except json.JSONDecodeError:
+                continue
+        return result
+    except Exception:
+        return []
+
+
+# ── Priority order ────────────────────────────────────────────────────────
 _PRIORITY_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3}
 
-# ── Policy Engine ──────────────────────────────────────────────────────────
+
+# ── Policy Engine ─────────────────────────────────────────────────────────
 
 class PolicyEngine:
     """Evaluates tool calls against registered policies."""
@@ -40,7 +97,6 @@ class PolicyEngine:
     def load_from_skills(self, skills_dir: str | Path | None = None) -> int:
         """Scan all installed skills for enforce: frontmatter and register policies."""
         if yaml is None:
-            logger.warning("PyYAML not installed. Install: pip install pyyaml")
             return 0
 
         if skills_dir is None:
@@ -69,25 +125,24 @@ class PolicyEngine:
                 if rules:
                     self._policies.extend(rules)
                     count += len(rules)
-            except Exception as e:
-                logger.debug("Error reading %s: %s", skill_md, e)
+            except Exception:
+                continue
 
         self._loaded = True
-        logger.info("PolicyEngine: loaded %d policies from %d skills", count, count)
         return count
 
     def evaluate(self, tool: str, action: str) -> dict:
         """Evaluate a tool call against registered policies.
 
         Returns:
-            {"allow": True, "reason": ""}  — allowed
-            {"allow": False, "reason": "..."} — blocked
-            {"allow": None, "reason": "..."} — needs user prompt
+            {"allow": True, "reason": "", "policy_id": ""}  — allowed
+            {"allow": False, "reason": "...", "policy_id": "..."} — blocked
+            {"allow": None, "reason": "...", "policy_id": "..."} — needs prompt
         """
         if not self._loaded:
             self.load_from_skills()
 
-        best = {"allow": True, "reason": "", "_priority": 99, "_action_score": 2}
+        best = {"allow": True, "reason": "", "policy_id": "", "_priority": 99, "_action_score": 2}
         for p in self._policies:
             pol = p.get("policy", {})
             tool_match = pol.get("tool", "") in ("*", tool) or tool in pol.get("tool", "").split("|")
@@ -102,15 +157,16 @@ class PolicyEngine:
                 continue
             prio = _PRIORITY_ORDER.get(p.get("priority", "medium"), 99)
             act = pol.get("action", "allow")
-            action_score = {"deny": 0, "prompt": 1, "allow": 2}.get(act, 2)
+            action_score = {"deny": 0, "prompt": 1, "allow": 2, "always": 3}.get(act, 2)
             if prio < best["_priority"] or (prio == best["_priority"] and action_score < best["_action_score"]):
                 best = {
-                    "allow": None if act == "prompt" else (act == "allow"),
+                    "allow": None if act == "prompt" else (act in ("allow", "always")),
                     "reason": pol.get("reason", ""),
+                    "policy_id": p.get("id", ""),
                     "_priority": prio,
                     "_action_score": action_score,
                 }
-        return {"allow": best["allow"], "reason": best["reason"]}
+        return {"allow": best["allow"], "reason": best["reason"], "policy_id": best["policy_id"]}
 
 
 # ── Singleton ──────────────────────────────────────────────────────────────
@@ -126,8 +182,6 @@ def get_engine() -> PolicyEngine:
 
 
 # ── Hermes Plugin Hook ────────────────────────────────────────────────────
-# This function is called by Hermes Agent before every tool execution.
-# Name and signature match what hermes_cli/plugins.py expects.
 
 def get_pre_tool_call_block_message(
     function_name: str,
@@ -141,24 +195,31 @@ def get_pre_tool_call_block_message(
     """
     engine = get_engine()
 
-    # Build action string from tool name + args
     action = function_name
-    if function_name == "terminal":
-        cmd = function_args.get("command", "")
+    if function_name in ("terminal", "exec"):
+        cmd = function_args.get("command", "") or function_args.get("cmd", "")
         action = f"{function_name}:{cmd[:200]}"
-    elif function_name in ("write_file", "patch", "delete"):
-        path = function_args.get("path", "")
+    elif function_name in ("write_file", "patch", "delete", "edit", "apply_patch"):
+        path = function_args.get("path", "") or function_args.get("file_path", "")
         action = f"{function_name}:{path}"
+    elif function_name == "web_fetch":
+        url = function_args.get("url", "") or function_args.get("urls", "")
+        action = f"{function_name}:{str(url)[:200]}"
 
     result = engine.evaluate(function_name, action)
 
     if result["allow"] is False:
         reason = result.get("reason", "Blocked by policy")
-        logger.info("POLICY BLOCKED: %s — %s", action[:80], reason)
-        return f"⛔ Policy blocked: {reason}"
+        pid = result.get("policy_id", "-")
+        _log_decision("blocked", function_name, action, pid, reason)
+        return f"⛔ [{pid}] Policy blocked: {reason}"
 
+    # prompt: return a special prefix Hermes routes to approval flow
     if result["allow"] is None:
-        logger.info("POLICY PROMPT: %s", action[:80])
-        return None  # Hermes will prompt user via its normal approval flow
+        pid = result.get("policy_id", "-")
+        reason = result.get("reason", "Needs approval")
+        _log_decision("prompted", function_name, action, pid, reason)
+        return f"⚠️ [{pid}] Policy requires approval: {reason}"
 
-    return None  # Allowed
+    _log_decision("allowed", function_name, action, "", "")
+    return None  # Allowed — Hermes proceeds normally

@@ -66,7 +66,9 @@ Both agents share the same PostgreSQL-backed memory store — no sync, no duplic
 The Dashboard shows both scopes side by side with platform icons (⚡ Hermes, 🐙 OpenClaw).  
 Each agent only sees its own memories by default. **The "All scopes" view gives you the complete shared brain.**
 
-> ⚡ **Breaking v3.0.0:** Skills can now define **enforceable rules** (`priority: critical`) that the agent must follow — no more ignored instructions. Structured directives sit above memory in every turn.
+> ⚡ **New in v3.0.0 — Enforce Governance Layer** — A priority-based governance system that makes agent behavior more stable and safe. Enforce rules sit above memory and cannot be ignored by the agent.
+>
+> **v3.0.0 führt enforce-Regeln ein. Alte Memory-Regeln entfernt. Enforce ist jetzt die verbindliche Governance-Schicht.**
 
 No extra setup — just connect both agents to the same sidecar URL and API key.
 

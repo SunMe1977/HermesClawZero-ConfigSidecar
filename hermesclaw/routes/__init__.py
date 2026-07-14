@@ -1168,3 +1168,30 @@ async def update_run_from_dashboard(
         query, selected_scope, page,
         health_stale_days, health_confidence_threshold, health_limit,
     )
+
+
+# ── Policy Engine Audit Endpoint ──────────────────────────────────────────
+
+POLICY_AUDIT_PATH = os.path.join(
+    os.environ.get("HERMES_HOME", os.path.expanduser("~/.hermes")),
+    "policy_audit.jsonl",
+)
+
+
+@app.get("/policy/audit")
+async def policy_audit(limit: int = 50):
+    """Return the last N entries from the Policy Engine audit log."""
+    if not os.path.exists(POLICY_AUDIT_PATH):
+        return {"entries": [], "active": False}
+    try:
+        with open(POLICY_AUDIT_PATH, encoding="utf-8") as f:
+            all_lines = [l.strip() for l in f if l.strip()]
+        entries = []
+        for l in all_lines[-limit:]:
+            try:
+                entries.append(json.loads(l))
+            except json.JSONDecodeError:
+                continue
+        return {"entries": entries, "active": True}
+    except Exception as e:
+        return {"entries": [], "active": False, "error": str(e)}

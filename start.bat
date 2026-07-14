@@ -43,9 +43,9 @@ rem Pre-rebuild backup
 echo [START] Pre-rebuild backup...
 python migrations\pre_rebuild_backup.py backup
 
-rem Docker cleanup (safe: keeps running containers + volumes)
+rem Docker cleanup (safe: only build cache, keeps all images + volumes)
 echo [START] Docker cleanup...
-docker system prune -a -f
+docker builder prune -a -f
 
 rem Auto-detect pgdata volume PG version — sets PGVECTOR_IMAGE for docker-compose build args
 set "PGVECTOR_IMAGE=pgvector/pgvector:0.8.0-pg17"
