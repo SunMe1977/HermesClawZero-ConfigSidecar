@@ -22,9 +22,9 @@ git pull origin main
 echo "[START] Pre-rebuild backup..."
 python3 migrations/pre_rebuild_backup.py backup
 
-# Docker cleanup (safe: only build cache, keeps all images + volumes)
+# Docker cleanup (safe: only dangling build cache, preserves active cache layers)
 echo "[START] Docker cleanup..."
-docker builder prune -a -f
+docker builder prune -f
 
 PROVIDER=""
 if [ -f .env ]; then
