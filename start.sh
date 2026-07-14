@@ -14,6 +14,14 @@ pkill -f "python3 sync_watchdog.py" >/dev/null 2>&1 || true
 
 docker compose down --remove-orphans
 
+# Pre-rebuild backup
+echo "[START] Pre-rebuild backup..."
+python3 migrations/pre_rebuild_backup.py backup
+
+# Docker cleanup (safe: keeps running containers + volumes)
+echo "[START] Docker cleanup..."
+docker system prune -a -f
+
 PROVIDER=""
 if [ -f .env ]; then
 	PROVIDER="$(grep -E '^AI_PROVIDER=' .env | head -n 1 | cut -d'=' -f2 | tr -d '[:space:]')"
