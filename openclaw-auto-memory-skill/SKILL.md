@@ -1,7 +1,7 @@
 ---
 name: "hermesclawzero-auto-memory"
-description: "Auto-capture chat to Hermes DB, load context on fresh chats, scheduled DB maintenance."
-version: "2.9.0"
+description: "Unified memory platform for Hermes, OpenClaw and AI agents — persistent long-term memory, cross-skill sharing, automated capture, governance rules, optimization, multi-tenant dashboard with pgvector search."
+version: "3.0.0"
 tags:
   - memory
   - hermes
@@ -24,7 +24,9 @@ Automatically captures conversation context to HermesClawZero DB so the agent re
 
 > 🌌 **New in v1.4.0:** Interactive **Memory Galaxy** dashboard — full-screen animated Canvas visualization with tenant orbits, glowing nodes, nebula shader, hover info cards, zoom & idle rotation.
 
----
+> ⚡ **New in v3.0.0: Enforceable Skill Rules** — Skills can now define enforced `priority: critical` rules that the agent **must** follow. Rules appear as structured directives above memory, making them impossible to ignore.
+
+> **🧠 Shared Brain**
 
 ## 🤖 One‑Click Install
 
@@ -47,11 +49,24 @@ After ~30s open → [`http://localhost:8010/dashboard`](http://localhost:8010/da
 | Step | What happens |
 |------|-------------|
 | 1 | Repo cloned + `.env` configured |
-| 2 | Docker Compose starts PostgreSQL + Ollama + API |
+| 2 | Docker Compose starts PostgreSQL (pgvector) + Ollama + API |
 | 3 | Dashboard live on `:8010` |
 | 4 | Memory skill activated in Hermes |
-| 5 | **Auto-import:** All existing Hermes sessions + messages are migrated into the Sidecar DB on first API startup — no manual migration needed |
+| 5 | **Auto-import:** All existing Hermes sessions + messages are migrated into the Sidecar DB on first API startup |
 | 6 | Auto-capture begins on next conversation |
+
+### Core capabilities
+
+| Area | What it does |
+|------|-------------|
+| **Persistent long-term memory** | SQLite chat data is synced to PostgreSQL with vector embeddings |
+| **Multi-tenant** | Hermes, OpenClaw and other agents share the same DB, isolated by scope |
+| **Automated capture** | New conversations are captured and embedded automatically |
+| **Memory optimization** | Built-in tiering (hot/warm/cold), decay, archiving, consolidation |
+| **Configurable governance** | Enforceable skill rules so agents follow critical instructions |
+| **Dashboard & visualization** | Memory Galaxy, health monitoring, search, manual review |
+| **Vector search** | pgvector-powered semantic search across all memories |
+| **Modular architecture** | FastAPI + Docker Compose, designed for self-hosted deployment |
 
 ### Manual start (if you don't have an agent):
 ```bash

@@ -1,5 +1,15 @@
 # Changelog
 
+## 3.0.0 (2026-07-14)
+
+### Breaking
+- **Enforceable Skill Rules** — Skills can now define `enforce:` rules with `priority: critical`. Rules appear as structured directives above memory in every turn. Agents must follow them.
+
+### Fixed
+- **Galaxy "loading" fix** — scope mapping now correctly matches unscoped items (`__unscoped__`), all items loaded (up to 20000), deadlock protection via lock_timeout
+- **Favicon 401** — `/favicon.ico`, `/favicon.svg`, `/site.webmanifest` served at root, bypass auth
+- **Unscoped in MV** — materialized view now includes empty/NULL scope_ids directly
+
 ## 2.9.0 (2026-07-13)
 
 ### Added
