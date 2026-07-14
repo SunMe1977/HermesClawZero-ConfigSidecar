@@ -434,7 +434,7 @@ async def dashboard(
                     galaxy_items.append({
                         "id": row[0],
                         "content": (row[1] or "")[:200],
-                        "scope": row[2] or "unknown",
+                        "scope": (row[2] or "").strip() if (row[2] or "").strip() else "__unscoped__",
                         "type": row[3] or "fact",
                         "importance": float(row[4] or 0),
                         "confidence": float(row[5] or 0),
@@ -1127,7 +1127,7 @@ async def galaxy_item_lazy(page_id: int):
                     "item": {
                         "id": row[0],
                         "content": (row[1] or "")[:200],
-                        "scope": row[2] or "unknown",
+                        "scope": (row[2] or "").strip() if (row[2] or "").strip() else "__unscoped__",
                         "type": row[3] or "fact",
                         "importance": float(row[4] or 0),
                         "confidence": float(row[5] or 0),
