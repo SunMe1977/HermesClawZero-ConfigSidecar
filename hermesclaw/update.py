@@ -3,6 +3,8 @@
 import os
 import subprocess
 import logging
+import threading
+import time
 from pathlib import Path
 from hermesclaw.config import REPO_DIR, UPDATE_REMOTE, UPDATE_BRANCH, UPDATE_RESTART_COMMAND
 
@@ -98,21 +100,25 @@ def run_update() -> dict:
     if UPDATE_RESTART_COMMAND.strip():
         restart_result["ran"] = True
         try:
-            proc = subprocess.run(
-                UPDATE_RESTART_COMMAND,
-                cwd=REPO_DIR,
-                text=True,
-                capture_output=True,
-                timeout=180,
-                check=False,
-                shell=True,
-            )
-            restart_result["ok"] = proc.returncode == 0
-            restart_result["stdout"] = (proc.stdout or "").strip()
-            restart_result["stderr"] = (proc.stderr or "").strip()
+            # Fire-and-forget: run restart in background so the HTTP response completes
+            threading.Thread(
+                target=_run_restart_command,
+                args=(UPDATE_RESTART_COMMAND,),
+                daemon=True,
+            ).start()
+            restart_result["ok"] = True
         except Exception as ex:
             restart_result["ok"] = False
             restart_result["stderr"] = str(ex)
+
+
+def _run_restart_command(cmd: str) -> None:
+    """Run the restart command in a background thread (fire-and-forget)."""
+    time.sleep(0.5)  # brief delay so the HTTP response can flush
+    try:
+        subprocess.run(cmd, cwd=REPO_DIR, shell=True, timeout=180, capture_output=True)
+    except Exception:
+        pass
 
     status_after = get_update_status(fetch_remote=False)
     return {

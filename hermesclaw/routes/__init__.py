@@ -1122,7 +1122,7 @@ async def update_run_from_dashboard(
 ):
     result = await run_in_threadpool(run_update)
     if result.get("updated"):
-        msg = "✅ Update successful!"
+        msg = "✅ Update applied — system restarts now. Wait ~30s and reload."
     elif result.get("message"):
         stderr = result.get("stderr", "")
         msg = f"❌ {result['message']}"
