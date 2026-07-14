@@ -424,10 +424,11 @@ async def dashboard(
     try:
         with connect_db() as conn:
             with conn.cursor() as cur:
+                cur.execute("SET lock_timeout = '3s'")
                 cur.execute(
                     "SELECT p.id, p.content, p.scope_id, p.memory_type, p.importance, p.confidence, p.sentiment, p.created_at, "
                     "COALESCE((SELECT string_agg(t.tag, ',') FROM tags t WHERE t.page_id = p.id), '') AS tags "
-                    "FROM pages p WHERE p.is_archived = FALSE ORDER BY p.id DESC"
+                    "FROM pages p ORDER BY p.id DESC LIMIT 10000"
                 )
                 for row in cur.fetchall():
                     tags_list = (row[8] or "").split(",") if row[8] else []
