@@ -428,7 +428,7 @@ async def dashboard(
                 cur.execute(
                     "SELECT p.id, p.content, p.scope_id, p.memory_type, p.importance, p.confidence, p.sentiment, p.created_at, "
                     "COALESCE((SELECT string_agg(t.tag, ',') FROM tags t WHERE t.page_id = p.id), '') AS tags "
-                    "FROM pages p ORDER BY p.id DESC LIMIT 10000"
+                    "FROM pages p ORDER BY p.id DESC LIMIT 20000"
                 )
                 for row in cur.fetchall():
                     tags_list = (row[8] or "").split(",") if row[8] else []

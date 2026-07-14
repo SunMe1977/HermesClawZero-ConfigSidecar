@@ -6,7 +6,21 @@
 
 # HermesClaw Zero-Config Sidecar
 
-**PostgreSQL‑backed long‑term memory for Hermes & OpenClaw — with a live Dashboard.**
+> **Next-Generation Agent Governance** — A governance-oriented architecture for autonomous AI agents, combining persistent memory, safety rules, and centralized management.
+
+**PostgreSQL‑backed long‑term memory for Hermes, OpenClaw and AI agents — with a live Dashboard.**  
+HermesClawZero gives agents a unified memory layer with automated capture, vector search, memory optimization, and configurable governance rules. Self-hosted via Docker Compose.
+
+| Proven capability | What it does |
+|---|---|
+| **Persistent long-term memory** | Chat data synced to PostgreSQL with vector embeddings |
+| **Multi-tenant** | Hermes, OpenClaw and other agents share one DB, isolated by scope |
+| **Automated capture** | Conversations are captured and embedded without manual steps |
+| **Memory optimization** | Tiering (hot/warm/cold), decay, archiving, consolidation |
+| **Configurable governance** | Enforceable skill rules so agents follow critical instructions |
+| **Dashboard** | Memory Galaxy, health monitoring, search, manual review |
+| **Vector search** | pgvector-powered semantic similarity across all memories |
+| **Self-hosted** | FastAPI + Docker Compose — modular, maintainable |
 
 ---
 
@@ -51,6 +65,8 @@ Both agents share the same PostgreSQL-backed memory store — no sync, no duplic
 
 The Dashboard shows both scopes side by side with platform icons (⚡ Hermes, 🐙 OpenClaw).  
 Each agent only sees its own memories by default. **The "All scopes" view gives you the complete shared brain.**
+
+> ⚡ **Breaking v3.0.0:** Skills can now define **enforceable rules** (`priority: critical`) that the agent must follow — no more ignored instructions. Structured directives sit above memory in every turn.
 
 No extra setup — just connect both agents to the same sidecar URL and API key.
 
