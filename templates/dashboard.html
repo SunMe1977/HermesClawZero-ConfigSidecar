@@ -1125,9 +1125,31 @@ function drawGalaxy(time) {
         const met = document.getElementById('ghcMeta');
         if (ten) ten.textContent = `◈ ${o.name}`;
         if (con) {
-          const fullText = node.item ? node.item.content : node.label;
-          con.textContent = fullText;
-          con.title = fullText;
+          const fullText = node.item ? node.item.content : (node.label && node.label !== '…' ? node.label : null);
+          if (fullText) {
+            con.textContent = fullText;
+            con.title = fullText;
+          } else {
+            con.textContent = '… loading …';
+            con.title = '';
+            // Lazy-load
+            const pid = node._lazyId;
+            if (pid && !node._loading) {
+              node._loading = true;
+              fetch('/galaxy/item/' + pid).then(r => r.json()).then(d => {
+                if (d.status === 'ok' && d.item) {
+                  node.item = d.item;
+                  node.label = d.item.content.slice(0, 60);
+                  if (hoveredNode === node) {
+                    con.textContent = d.item.content || '…';
+                    con.title = d.item.content || '…';
+                  }
+                } else {
+                  con.textContent = '…';
+                }
+              }).catch(() => { con.textContent = '…'; });
+            }
+          }
         }
         if (met) met.innerHTML = `<span>🕐 ${node.ts}</span><span>🏷 ${(node.tags || []).join(', ')}</span><span>${node.item ? '⭐ ' + node.item.importance.toFixed(2) : ''}</span>`;
         card.style.display = 'block';

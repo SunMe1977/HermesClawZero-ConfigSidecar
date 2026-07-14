@@ -419,8 +419,7 @@ async def dashboard(
     except Exception:
         galaxy_high_conf = galaxy_med_conf = galaxy_low_conf = 0
 
-    # Recent pages for galaxy node content (up to 200)
-    # Recent pages for galaxy node content (up to 800)
+    # All pages for galaxy node content
     galaxy_items = []
     try:
         with connect_db() as conn:
@@ -428,7 +427,7 @@ async def dashboard(
                 cur.execute(
                     "SELECT p.id, p.content, p.scope_id, p.memory_type, p.importance, p.confidence, p.sentiment, p.created_at, "
                     "COALESCE((SELECT string_agg(t.tag, ',') FROM tags t WHERE t.page_id = p.id), '') AS tags "
-                    "FROM pages p WHERE p.is_archived = FALSE ORDER BY p.created_at DESC LIMIT 800"
+                    "FROM pages p WHERE p.is_archived = FALSE ORDER BY p.id DESC"
                 )
                 for row in cur.fetchall():
                     tags_list = (row[8] or "").split(",") if row[8] else []
@@ -1105,6 +1104,40 @@ async def graph_search(q: str = ""):
             )
             entities = [{"id": r[0], "name": r[1], "type": r[2], "frequency": r[3]} for r in cur.fetchall()]
     return {"status": "ok", "entities": entities}
+
+
+@router.get("/galaxy/item/{page_id}")
+async def galaxy_item_lazy(page_id: int):
+    """Lazy-load a single galaxy item's content on demand."""
+    from hermesclaw.db import connect_db
+    try:
+        with connect_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT p.id, p.content, p.scope_id, p.memory_type, p.importance, p.confidence, p.sentiment, p.created_at, "
+                    "COALESCE((SELECT string_agg(t.tag, ',') FROM tags t WHERE t.page_id = p.id), '') AS tags "
+                    "FROM pages p WHERE p.id = %s AND p.is_archived = FALSE", (page_id,)
+                )
+                row = cur.fetchone()
+                if not row:
+                    return {"status": "not_found"}
+                tags_list = (row[8] or "").split(",") if row[8] else []
+                return {
+                    "status": "ok",
+                    "item": {
+                        "id": row[0],
+                        "content": (row[1] or "")[:200],
+                        "scope": row[2] or "unknown",
+                        "type": row[3] or "fact",
+                        "importance": float(row[4] or 0),
+                        "confidence": float(row[5] or 0),
+                        "sentiment": float(row[6] or 0),
+                        "ts": str(row[7]) if row[7] else "",
+                        "tags": tags_list[:5],
+                    },
+                }
+    except Exception as ex:
+        return {"status": "error", "message": str(ex)}
 
 
 @router.post("/update/run_from_dashboard", dependencies=[Depends(get_current_username)])
