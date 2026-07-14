@@ -38,6 +38,22 @@ https://github.com/SunMe1977/HermesClawZero-ConfigSidecar
 >
 > 📄 See [`install_via_agent.md`](install_via_agent.md) for the detailed agent instructions.
 
+### 🧠 Shared Brain — Hermes + OpenClaw
+
+**HermesClawZero works as a unified memory layer for both Hermes and OpenClaw simultaneously.**
+
+Both agents share the same PostgreSQL-backed memory store — no sync, no duplication:
+
+| Agent | Memory Scope | Access |
+|-------|-------------|--------|
+| **Hermes Desktop** | `hermes:<chat_id>` | sync_watchdog + API |
+| **OpenClaw** | `openclaw:<chat_id>` | API capture |
+
+The Dashboard shows both scopes side by side with platform icons (⚡ Hermes, 🐙 OpenClaw).  
+Each agent only sees its own memories by default. **The "All scopes" view gives you the complete shared brain.**
+
+No extra setup — just connect both agents to the same sidecar URL and API key.
+
 **Manual start** (if you don't have an agent):
 
 ```bash

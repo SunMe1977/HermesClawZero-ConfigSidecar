@@ -1,7 +1,7 @@
 ---
 name: "hermesclawzero-auto-memory"
 description: "Auto-capture chat to Hermes DB, load context on fresh chats, scheduled DB maintenance."
-version: "2.7.0"
+version: "2.8.0"
 tags:
   - memory
   - hermes
@@ -38,7 +38,12 @@ https://github.com/SunMe1977/HermesClawZero-ConfigSidecar
 **⬆️ The agent clones, configures, and starts everything.**  
 After ~30s open → [`http://localhost:8010/dashboard`](http://localhost:8010/dashboard)
 
-### What gets installed:
+> **🧠 Shared Brain** — Hermes and OpenClaw share the same memory store simultaneously.
+> Both agents' memories appear side by side in the Dashboard with platform icons
+> (⚡ Hermes, 🐙 OpenClaw). Each sees only its own scope by default, the "All scopes"
+> view gives you the complete shared brain. No extra setup needed.
+
+> 📄 See [`install_via_agent.md`](install_via_agent.md) for the detailed agent instructions.
 | Step | What happens |
 |------|-------------|
 | 1 | Repo cloned + `.env` configured |

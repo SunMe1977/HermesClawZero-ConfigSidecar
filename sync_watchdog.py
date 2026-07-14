@@ -84,7 +84,13 @@ def _resolve_scope_prefix() -> str:
     return "hermes"
 
 
+def _resolve_openclaw_prefix() -> str | None:
+    oc = (os.getenv("OPENCLAW_SCOPE_PREFIX") or "").strip().lower()
+    return oc if oc else None
+
+
 SCOPE_PREFIX = _resolve_scope_prefix()
+OPENCLAW_PREFIX = _resolve_openclaw_prefix()
 
 
 def _api_reachable() -> bool:
