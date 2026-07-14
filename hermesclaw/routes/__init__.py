@@ -375,7 +375,7 @@ async def dashboard(
                             scope_rows.append((row[0], int(row[1])))
                             galaxy_tenants_list.append({"name": format_scope_label(str(row[0])), "count": int(row[1]), "scope": str(row[0])})
                 # Add unscoped count (pages with NULL or empty scope_id) as a virtual tenant
-                cur.execute("SELECT COUNT(*) FROM pages WHERE scope_id IS NULL OR scope_id = ''")
+                cur.execute("SELECT COUNT(*) FROM pages WHERE (scope_id IS NULL OR scope_id = '') AND is_archived = FALSE")
                 unscoped_count = int(cur.fetchone()[0] or 0)
                 if unscoped_count > 0:
                     galaxy_tenants_list.append({"name": "📂 Unscoped", "count": unscoped_count, "scope": "__unscoped__"})
