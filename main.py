@@ -25,6 +25,13 @@ from hermesclaw.routes import router
 
 app = FastAPI()
 
+# Mount static files (favicons, logos)
+from fastapi.staticfiles import StaticFiles
+import os
+_static_dir = os.path.join(os.path.dirname(__file__), "static")
+os.makedirs(_static_dir, exist_ok=True)
+app.mount("/static", StaticFiles(directory=_static_dir), name="static")
+
 # ---------------------------------------------------------------------------
 # Middleware
 # ---------------------------------------------------------------------------
