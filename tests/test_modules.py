@@ -143,7 +143,7 @@ class ModuleBehaviorSmokeTests(unittest.TestCase):
         self.assertEqual(clamp(0.5, 0, 1), 0.5)
 
         self.assertIn("Telegram", format_scope_label("telegram:12345"))
-        self.assertIn("Openclaw", format_scope_label("openclaw:user_abc"))
+        self.assertIn("OpenClaw", format_scope_label("openclaw:user_abc"))
 
     def test_env_bool_security_and_token(self):
         from hermesclaw.config import env_bool
