@@ -1,5 +1,18 @@
 # Changelog
 
+## 2.9.0 (2026-07-13)
+
+### Added
+- **Unscoped galaxy tenant** — memories without scope_id now show as 📂 Unscoped tenant
+- **Fire-and-forget update** — dashboard update no longer hangs (response completes before container restart)
+- **Shared Brain documentation** — README + SKILL.md document Hermes+OpenClaw shared memory
+- **OPENCLAW_SCOPE_PREFIX** — env var for separate OpenClaw scope tagging
+- **Pre-rebuild backup + docker prune** — start scripts now run backup + cleanup before rebuild
+
+### Fixed
+- **Galaxy unscoped display on Linux** — all 3800+ memories now visible as planets
+- **Galaxy tags column** — query now uses subquery from tags table (was crashing silently)
+
 ## 2.7.0 (2026-07-13)
 
 ### Added
