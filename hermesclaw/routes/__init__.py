@@ -338,11 +338,6 @@ async def dashboard(
         {"name": format_scope_label(str(sid)), "count": int(c), "scope": str(sid)}
         for sid, c in scope_rows[:10]
     ]
-    # If all memories are unscoped (NULL scope_id), add a default tenant
-    if not scope_rows and total_items > 0:
-        galaxy_tenants_list = [
-            {"name": "📂 Unscoped", "count": int(total_items), "scope": "__unscoped__"}
-        ]
     galaxy_total = int(total_items)
 
     # 2M-scale: use materialized view for dashboard aggregates
@@ -371,14 +366,10 @@ async def dashboard(
                 with conn.cursor() as cur:
                     cur.execute("SELECT scope_id, total, active FROM pages_scope_stats_mv ORDER BY total DESC LIMIT 10")
                     for row in cur.fetchall():
-                        if row[0]:
-                            scope_rows.append((row[0], int(row[1])))
-                            galaxy_tenants_list.append({"name": format_scope_label(str(row[0])), "count": int(row[1]), "scope": str(row[0])})
-                # Add unscoped count (pages with NULL or empty scope_id) as a virtual tenant
-                cur.execute("SELECT COUNT(*) FROM pages WHERE scope_id IS NULL OR scope_id = ''")
-                unscoped_count = int(cur.fetchone()[0] or 0)
-                if unscoped_count > 0:
-                    galaxy_tenants_list.append({"name": "📂 Unscoped", "count": unscoped_count, "scope": "__unscoped__"})
+                        scope_id = row[0] if row[0] else "__unscoped__"
+                        label = format_scope_label(str(row[0])) if row[0] else "📂 Unscoped"
+                        scope_rows.append((scope_id, int(row[1])))
+                        galaxy_tenants_list.append({"name": label, "count": int(row[1]), "scope": scope_id})
         except Exception:
             logger.warning("dashboard: scope MV read failed", exc_info=True)
     if not mv_stats or not galaxy_tenants_list:

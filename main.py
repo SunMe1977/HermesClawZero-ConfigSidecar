@@ -32,6 +32,29 @@ _static_dir = os.path.join(os.path.dirname(__file__), "static")
 os.makedirs(_static_dir, exist_ok=True)
 app.mount("/static", StaticFiles(directory=_static_dir), name="static")
 
+
+# Serve favicon at root (browser default path) — bypasses auth
+from fastapi.responses import RedirectResponse, FileResponse
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon_root():
+    ico_path = os.path.join(_static_dir, "favicon.ico")
+    if os.path.exists(ico_path):
+        return FileResponse(ico_path, media_type="image/x-icon")
+    return RedirectResponse(url="/static/favicon.ico")
+
+
+@app.get("/favicon.svg", include_in_schema=False)
+async def favicon_svg_root():
+    return FileResponse(os.path.join(_static_dir, "favicon.svg"), media_type="image/svg+xml")
+
+
+@app.get("/site.webmanifest", include_in_schema=False)
+async def manifest_root():
+    return FileResponse(os.path.join(os.path.dirname(__file__), "site.webmanifest"), media_type="application/manifest+json")
+
+
 # ---------------------------------------------------------------------------
 # Middleware
 # ---------------------------------------------------------------------------
