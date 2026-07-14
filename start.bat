@@ -35,6 +35,14 @@ if "%ENV_DASHBOARD_SESSION_SECRET%"=="%ENV_API_KEY%" (
 echo [START] System Services...
 docker compose down --remove-orphans
 
+rem Pre-rebuild backup
+echo [START] Pre-rebuild backup...
+python migrations\pre_rebuild_backup.py backup
+
+rem Docker cleanup (safe: keeps running containers + volumes)
+echo [START] Docker cleanup...
+docker system prune -a -f
+
 rem Auto-detect pgdata volume PG version — sets PGVECTOR_IMAGE for docker-compose build args
 set "PGVECTOR_IMAGE=pgvector/pgvector:0.8.0-pg17"
 docker volume inspect hermesclawzero-configsidecar_pgdata >nul 2>&1
