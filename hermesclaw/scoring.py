@@ -132,13 +132,35 @@ def format_scope_label(scope_id: str, count: int | None = None) -> str:
 
     if local_id:
         id_part = local_id.strip()
+        icon = ""
         if prefix_lower in {"telegram", "tg"}:
-            return f"Telegram chat {id_part}{suffix}"
-        if prefix_lower in {"openclaw", "hermes"}:
-            return f"{prefix.capitalize()} user {id_part}{suffix}"
-        return f"{prefix} {id_part}{suffix}"
+            icon = "📱"
+            return f"{icon} Telegram · {id_part[:12]}{suffix}"
+        if prefix_lower == "openclaw":
+            icon = "🐙"
+            return f"{icon} OpenClaw · {id_part[:12]}{suffix}"
+        if prefix_lower == "hermes":
+            icon = "⚡"
+            return f"{icon} Hermes · {id_part[:12]}{suffix}"
+        if prefix_lower in {"discord", "dc"}:
+            icon = "💬"
+            return f"{icon} Discord · {id_part[:12]}{suffix}"
+        if prefix_lower == "whatsapp":
+            icon = "📞"
+            return f"{icon} WhatsApp · {id_part[:12]}{suffix}"
+        if prefix_lower in {"slack", "sk"}:
+            icon = "🔷"
+            return f"{icon} Slack · {id_part[:12]}{suffix}"
+        return f"{icon} {prefix_lower}:{id_part[:16]}{suffix}"
 
-    return f"{clean_scope}{suffix}"
+    icon = ""
+    if prefix_lower == "global":
+        icon = "🌐"
+    elif prefix_lower in {"test", "testing"}:
+        icon = "🧪"
+    else:
+        icon = "📂"
+    return f"{icon} {clean_scope[:24]}{suffix}"
 
 
 # ---------------------------------------------------------------------------
