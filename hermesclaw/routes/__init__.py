@@ -338,6 +338,11 @@ async def dashboard(
         {"name": format_scope_label(str(sid)), "count": int(c), "scope": str(sid)}
         for sid, c in scope_rows[:10]
     ]
+    # If all memories are unscoped (NULL scope_id), add a default tenant
+    if not scope_rows and total_items > 0:
+        galaxy_tenants_list = [
+            {"name": "📂 Unscoped", "count": int(total_items), "scope": "__unscoped__"}
+        ]
     galaxy_total = int(total_items)
 
     # 2M-scale: use materialized view for dashboard aggregates
