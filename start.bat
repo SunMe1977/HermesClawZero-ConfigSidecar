@@ -35,6 +35,10 @@ if "%ENV_DASHBOARD_SESSION_SECRET%"=="%ENV_API_KEY%" (
 echo [START] System Services...
 docker compose down --remove-orphans
 
+rem Git pull — update host code before rebuild
+echo [START] Updating source code...
+git pull origin main
+
 rem Pre-rebuild backup
 echo [START] Pre-rebuild backup...
 python migrations\pre_rebuild_backup.py backup

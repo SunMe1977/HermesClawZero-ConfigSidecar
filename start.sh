@@ -14,6 +14,10 @@ pkill -f "python3 sync_watchdog.py" >/dev/null 2>&1 || true
 
 docker compose down --remove-orphans
 
+# Git pull — update host code before rebuild
+echo "[START] Updating source code..."
+git pull origin main
+
 # Pre-rebuild backup
 echo "[START] Pre-rebuild backup..."
 python3 migrations/pre_rebuild_backup.py backup
