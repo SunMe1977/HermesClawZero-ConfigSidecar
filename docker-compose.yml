@@ -22,8 +22,12 @@ services:
       - ./migrations/backup_db.sh:/docker-entrypoint-initdb.d/99-backup.sh:ro
       # Pre-rebuild backup exports (survives container rebuild)
       - pg_backups:/var/lib/postgresql/backups
-      # PITR: WAL archive volume for point-in-time recovery
-      - pgwal:/var/lib/postgresql/wal_archive
+    # NOTE: archive_mode/archive_command removed — WAL archiving (PITR) to a pgwal volume
+    # failed silently (volume was root-owned; postgres uid 999 had no write permission),
+    # leaving WAL segments stuck as .ready forever -> pg_wal grew unbounded (52 GB) and
+    # filled the whole disk. Single-node memory DB: no PITR needed, regular backups exist
+    # via pg_backups volume. max_wal_size=4GB now lets PostgreSQL recycle WAL normally
+    # after each checkpoint, so pg_wal stays bounded.
     command: >
       -c shared_buffers=1GB
       -c work_mem=64MB
@@ -36,9 +40,6 @@ services:
       -c min_wal_size=1GB
       -c max_wal_size=4GB
       -c wal_level=replica
-      -c archive_mode=on
-      -c archive_command='cp %p /var/lib/postgresql/wal_archive/%f'
-      -c archive_timeout=300
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d gbrain"]
       interval: 10s
@@ -170,5 +171,4 @@ volumes:
   pgdata:
   ollama_data:
   caddy_data:
-  pgwal:
   pg_backups:
