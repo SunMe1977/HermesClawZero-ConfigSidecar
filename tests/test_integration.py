@@ -150,13 +150,13 @@ class IntegrationSmokeTest(unittest.TestCase):
     def test_04_search_memory(self):
         """GET /search finds the captured memory by text."""
         self._capture_if_needed()
-        resp = _request("GET", f"/search?q=coffee+preferences&n=5")
-        self.assertIn("results", resp, f"search failed: {resp}")
-        results = resp["results"]
-        self.assertGreater(len(results), 0, "No search results found")
-        found = any("coffee" in r.get("content", "").lower() for r in results)
-        self.assertTrue(found, f"Captured memory not found in search results: {results[:2]}")
-        self.captured_id = results[0].get("id")
+        resp = _request("GET", "/search?query=coffee+preferences&limit=5")
+        # /search returns a bare list of hits, not {"results": [...]}.
+        self.assertIsInstance(resp, list, f"search failed: {resp}")
+        self.assertGreater(len(resp), 0, "No search results found")
+        found = any("coffee" in r.get("content", "").lower() for r in resp)
+        self.assertTrue(found, f"Captured memory not found in search results: {resp[:2]}")
+        self.captured_id = resp[0].get("id")
 
     def test_05_dashboard_loads(self):
         """GET /dashboard returns 200 with HTML content."""
@@ -173,7 +173,12 @@ class IntegrationSmokeTest(unittest.TestCase):
 
     def test_06_memory_timeline(self):
         """GET /timeline returns captured memory."""
-        resp = _request("GET", "/timeline?scope_id=integration_test")
+        # /timeline is dashboard-protected (Basic auth), not API-key protected.
+        resp = _request(
+            "GET",
+            "/timeline?scope_id=integration_test",
+            headers=_basic_auth_header(),
+        )
         self.assertIn("results", resp, f"timeline failed: {resp}")
 
     def _capture_if_needed(self):
