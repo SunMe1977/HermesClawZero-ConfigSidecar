@@ -12,6 +12,7 @@ Requires Docker on the host. Skips gracefully if not available.
 import os
 import json
 import time
+import base64
 import unittest
 import urllib.request
 import urllib.error
@@ -20,6 +21,19 @@ import sys
 
 BASE_URL = os.getenv("TEST_BASE_URL", "http://localhost:8010")
 COMPOSE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
+
+# API_KEY is required on all data endpoints (x-api-key header) and
+# DASHBOARD_PASSWORD guards the dashboard via HTTP Basic auth. Both are
+# provided by the CI env / local .env.
+API_KEY = os.getenv("API_KEY", "")
+DASHBOARD_USER = os.getenv("DASHBOARD_USER", "admin")
+DASHBOARD_PASSWORD = os.getenv("DASHBOARD_PASSWORD", "")
+
+
+def _basic_auth_header() -> dict:
+    """HTTP Basic auth header for the dashboard (admin / DASHBOARD_PASSWORD)."""
+    raw = f"{DASHBOARD_USER}:{DASHBOARD_PASSWORD}".encode()
+    return {"Authorization": "Basic " + base64.b64encode(raw).decode()}
 
 
 def _docker_available():
@@ -47,6 +61,10 @@ def _request(method: str, path: str, data: dict = None, headers: dict = None) ->
     body = json.dumps(data).encode() if data else None
     req = urllib.request.Request(url, data=body, method=method)
     req.add_header("Content-Type", "application/json")
+    # Data endpoints require the API key; always send it so tests work
+    # against a hardened deployment.
+    if API_KEY:
+        req.add_header("x-api-key", API_KEY)
     if headers:
         for k, v in headers.items():
             req.add_header(k, v)
@@ -113,7 +131,11 @@ class IntegrationSmokeTest(unittest.TestCase):
         """GET /version returns version info."""
         resp = _request("GET", "/version")
         self.assertIn("version", resp)
-        self.assertIn("git", resp)
+        # 'git' is present as a key but is None inside a container build
+        # context (no .git directory). Assert the key exists, not its value.
+        version = resp["version"]
+        self.assertIsInstance(version, dict, f"unexpected version payload: {resp}")
+        self.assertIn("git", version)
 
     def test_03_capture_memory(self):
         """POST /capture saves a memory and returns page_id."""
@@ -139,8 +161,10 @@ class IntegrationSmokeTest(unittest.TestCase):
     def test_05_dashboard_loads(self):
         """GET /dashboard returns 200 with HTML content."""
         url = f"{BASE_URL}/dashboard"
+        req = urllib.request.Request(url)
+        req.add_header("Authorization", _basic_auth_header()["Authorization"])
         try:
-            resp = urllib.request.urlopen(url, timeout=15)
+            resp = urllib.request.urlopen(req, timeout=15)
             html = resp.read().decode()
             self.assertIn("Memory Health", html, "Dashboard missing 'Memory Health' section")
             self.assertIn("Memory Galaxy", html, "Dashboard missing 'Memory Galaxy' toggle")

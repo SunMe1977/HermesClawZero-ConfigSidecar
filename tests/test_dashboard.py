@@ -12,6 +12,11 @@ import subprocess
 import time
 
 DASHBOARD_URL = os.getenv("DASHBOARD_URL", "http://localhost:8010/dashboard")
+# The dashboard is protected by HTTP Basic auth. Playwright must send the
+# credentials in the browser context, otherwise the page renders the login
+# challenge (or a 401 body) and the UI assertions fail.
+DASHBOARD_USER = os.getenv("DASHBOARD_USER", "admin")
+DASHBOARD_PASSWORD = os.getenv("DASHBOARD_PASSWORD", "")
 
 try:
     from playwright.sync_api import sync_playwright, expect
@@ -23,7 +28,13 @@ def test_dashboard_loads():
     """Dashboard page loads without error and shows key UI elements."""
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
-        page = browser.new_page()
+        context = browser.new_context(
+            http_credentials={
+                "username": DASHBOARD_USER,
+                "password": DASHBOARD_PASSWORD,
+            }
+        )
+        page = context.new_page()
         page.set_default_timeout(30000)
 
         # Navigate with auth if needed

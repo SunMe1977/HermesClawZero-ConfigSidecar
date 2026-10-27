@@ -266,9 +266,12 @@ jobs:
           playwright install chromium
 
       - name: Dashboard Playwright test
+        env:
+          DASHBOARD_URL: http://localhost:8010/dashboard
+          DASHBOARD_USER: admin
+          DASHBOARD_PASSWORD: ci-test-pass-1234
         run: |
           curl -sf http://localhost:8010/healthz && echo "Health OK" || { echo "API not healthy"; exit 1; }
-          curl -s http://localhost:8010/dashboard | head -c 200
           python tests/test_dashboard.py
 
       - name: Cleanup
