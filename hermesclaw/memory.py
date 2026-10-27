@@ -162,21 +162,21 @@ def _capture_sync(
                         )
                         conn.commit()
                 page_id = new_id
-    # ── Queue async embedding (non-blocking at 2M scale) ──
-    from hermesclaw.embedding_queue import enqueue, ensure_worker
-    ensure_worker()
-    try:
-        enqueue(page_id, capture_text)
-    except Exception:
-        pass
+                # ── Queue async embedding (non-blocking at 2M scale) ──
+                from hermesclaw.embedding_queue import enqueue, ensure_worker
+                ensure_worker()
+                try:
+                    enqueue(page_id, capture_text)
+                except Exception:
+                    pass
 
-    return {
-        "status": "superseded",
-        "page_id": page_id,
-        "supersedes": target_id,
-        "reason": reason,
-        "score": meta["score"],
-    }
+                return {
+                    "status": "superseded",
+                    "page_id": page_id,
+                    "supersedes": target_id,
+                    "reason": reason,
+                    "score": meta["score"],
+                }
 
 # ── ADD: insert new memory with initial stability ──
     with connect_db() as conn:

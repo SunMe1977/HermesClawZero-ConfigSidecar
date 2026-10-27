@@ -35,3 +35,7 @@ npm
 pnpm
 sidecar.sh
 sync_failed_ids.json
+
+# Backups / generated artifacts
+docker-compose.yml.bak-*
+import_markers.json
