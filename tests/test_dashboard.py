@@ -66,9 +66,13 @@ def test_dashboard_loads():
         if has_memories:
             assert page.locator("table.memory-table").count() > 0 or page.locator(".memory-table").count() > 0, "No memory table"
 
-        # Verify page not showing raw CSS (the bug we fixed)
-        raw_css = page.locator(":root").count()
-        assert raw_css == 0 or len(page.content()) < 5000, "Raw CSS displayed instead of rendered page"
+        # Verify the page is not dumping raw CSS as text. The original check
+        # counted locator(":root") elements, which always matches the <html>
+        # element, so it could never be 0 and only the byte-length fallback
+        # was ever evaluated. Check for visible CSS text instead.
+        body_text = page.inner_text("body")
+        assert "--" not in body_text[:2000], "Raw CSS variables displayed as text"
+        assert "{" not in body_text[:2000], "Raw CSS rules displayed as text"
 
         browser.close()
         print("PASS: Dashboard renders correctly")
@@ -76,9 +80,18 @@ def test_dashboard_loads():
 
 def test_dashboard_health_section():
     """Health section shows expected controls."""
+    if not DASHBOARD_PASSWORD:
+        print("SKIP: DASHBOARD_PASSWORD not set")
+        sys.exit(0)
+
+    token = base64.b64encode(
+        f"{DASHBOARD_USER}:{DASHBOARD_PASSWORD}".encode()
+    ).decode()
+
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
-        page = browser.new_page()
+        context = browser.new_context(extra_http_headers={"Authorization": f"Basic {token}"})
+        page = context.new_page()
         page.goto(DASHBOARD_URL)
 
         # Health controls should exist
@@ -91,9 +104,18 @@ def test_dashboard_health_section():
 
 def test_dashboard_version_info():
     """Page includes version info."""
+    if not DASHBOARD_PASSWORD:
+        print("SKIP: DASHBOARD_PASSWORD not set")
+        sys.exit(0)
+
+    token = base64.b64encode(
+        f"{DASHBOARD_USER}:{DASHBOARD_PASSWORD}".encode()
+    ).decode()
+
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
-        page = browser.new_page()
+        context = browser.new_context(extra_http_headers={"Authorization": f"Basic {token}"})
+        page = context.new_page()
         page.goto(DASHBOARD_URL)
 
         content = page.content()

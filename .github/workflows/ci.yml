@@ -167,7 +167,7 @@ jobs:
           echo "REDIS_PASSWORD=ci-test-redis-pass" >> .env
           echo "AI_PROVIDER=ollama" >> .env
           echo "OLLAMA_HOST=http://host.docker.internal:11434" >> .env
-          docker compose -f docker-compose.yml up -d db api
+          docker compose -f docker-compose.yml up -d db api1
           echo "Waiting for API to be healthy..."
           for i in $(seq 1 30); do
             sleep 5
