@@ -95,14 +95,33 @@ jobs:
           DASHBOARD_PASSWORD=strong-pass!@#
           DASHBOARD_SESSION_SECRET=test-session-secret-very-strong
           AI_PROVIDER=ollama
-          OLLAMA_HOST=
+          OLLAMA_HOST=http://ollama:11434
           SYNC_DIR=/app/sync
           EOF
           echo "  .env created ($(wc -l < .env) lines)"
 
+      - name: Start Ollama (embeddings backend)
+        run: |
+          # /capture generates an embedding, so the API needs a live provider.
+          # Without it the endpoint returns 500 and the integration tests fail.
+          docker compose --profile ollama up -d ollama
+          echo "Waiting for Ollama..."
+          for i in $(seq 1 40); do
+            if docker exec hc-sidecar-ollama ollama list >/dev/null 2>&1; then
+              echo "  Ollama up (attempt $i)"
+              break
+            fi
+            sleep 5
+          done
+          docker exec hc-sidecar-ollama ollama pull nomic-embed-text
+
       - name: Run standalone integration tests (gate)
         env:
+          # Must match the values written into .env above: the test process
+          # creates its own containers from that .env, and the assertions
+          # authenticate against those containers.
           API_KEY: test-key-123
+          DASHBOARD_USER: admin
           DASHBOARD_PASSWORD: strong-pass!@#
           DASHBOARD_SESSION_SECRET: test-session-secret-very-strong
           DB_HOST: localhost
@@ -269,6 +288,7 @@ jobs:
         env:
           DASHBOARD_URL: http://localhost:8010/dashboard
           DASHBOARD_USER: admin
+          # Must match the DASHBOARD_PASSWORD written into .env above.
           DASHBOARD_PASSWORD: ci-test-pass-1234
         run: |
           curl -sf http://localhost:8010/healthz && echo "Health OK" || { echo "API not healthy"; exit 1; }
