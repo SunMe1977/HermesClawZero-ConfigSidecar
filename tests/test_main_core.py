@@ -21,6 +21,17 @@ class ValidateSecurityStartupTests(unittest.TestCase):
         cfg.DASHBOARD_PASSWORD = dashboard_password
         cfg.DASHBOARD_SESSION_SECRET = session_secret
 
+    def setUp(self):
+        # auth.validate_security_startup() reads hermesclaw.config at call time,
+        # so tests mutate the module globals. Restore the process defaults after
+        # every test or the last mutation leaks into unrelated test modules.
+        import hermesclaw.config as cfg
+        self._saved = (cfg.API_KEY, cfg.DASHBOARD_PASSWORD, cfg.DASHBOARD_SESSION_SECRET)
+
+    def tearDown(self):
+        import hermesclaw.config as cfg
+        cfg.API_KEY, cfg.DASHBOARD_PASSWORD, cfg.DASHBOARD_SESSION_SECRET = self._saved
+
     def test_validate_security_startup_rejects_default_dashboard_password(self):
         self._set_globals(api_key="key-123", dashboard_password="admin", session_secret="very-strong-secret")
         from hermesclaw.auth import validate_security_startup

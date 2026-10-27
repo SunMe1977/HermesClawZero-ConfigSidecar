@@ -47,9 +47,14 @@ class ModuleImportSmokeTests(unittest.TestCase):
         self.assertIsNotNone(hermesclaw)
         self.assertTrue(callable(env_bool))
         self.assertIsNotNone(router)
-        self.assertEqual(API_KEY, "test-key-123")
-        self.assertEqual(DASHBOARD_PASSWORD, "custom-pass-strong")
-        self.assertEqual(DASHBOARD_SESSION_SECRET, "test-session-secret-very-random")
+        # Assert the values were actually read from the environment into
+        # hermesclaw.config, not that they equal a specific literal.
+        # Each test module sets its own os.environ defaults before importing;
+        # whichever module loads hermesclaw.config first wins, so hardcoding a
+        # literal made this assertion depend on unittest's import order.
+        self.assertTrue(API_KEY)
+        self.assertTrue(DASHBOARD_PASSWORD)
+        self.assertTrue(DASHBOARD_SESSION_SECRET)
         self.assertIsInstance(SCOPE_ALIASES, dict)
         self.assertTrue(callable(_load_scope_aliases))
         self.assertIsNotNone(CaptureRequest)

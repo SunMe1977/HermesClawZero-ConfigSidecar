@@ -128,6 +128,7 @@ jobs:
           echo "API_KEY=ci-test-key-123" >> .env
           echo "DASHBOARD_PASSWORD=ci-test-dash-!234" >> .env
           echo "DASHBOARD_SESSION_SECRET=ci-test-session-secret-long-enough" >> .env
+          echo "REDIS_PASSWORD=ci-test-redis-pass" >> .env
           echo "AI_PROVIDER=ollama" >> .env
           echo "OLLAMA_HOST=http://host.docker.internal:11434" >> .env
           docker compose -f docker-compose.yml up -d db api
@@ -223,7 +224,8 @@ jobs:
           echo "DB_PASSWORD=ci-test-pass" > .env
           echo "API_KEY=ci-test-key-123" >> .env
           echo "DASHBOARD_PASSWORD=ci-test-dash-!234" >> .env
-          echo "DASHBOARD_SESSION_SECRET=ci-test-session-secret-long-enough" >> .env
+          echo "DASHBOARD_SESSION_SECRET=ci-tes...gh" >> .env
+          echo "REDIS_PASSWORD=ci-tes...ss" >> .env
           echo "AI_PROVIDER=ollama" >> .env
           docker compose up -d db api1 api2 caddy redis pgbouncer
           for i in $(seq 1 30); do

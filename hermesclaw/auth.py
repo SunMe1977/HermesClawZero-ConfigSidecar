@@ -11,9 +11,10 @@ from fastapi import HTTPException, status, Request, Response, Depends
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from cachetools import TTLCache
 from collections import deque
+from hermesclaw import config as _config
 from hermesclaw.config import (
-    API_KEY, DASHBOARD_PASSWORD, DASHBOARD_SESSION_COOKIE,
-    DASHBOARD_SESSION_TTL_SECONDS, DASHBOARD_SESSION_SECRET,
+    DASHBOARD_SESSION_COOKIE,
+    DASHBOARD_SESSION_TTL_SECONDS,
     RATE_LIMIT_RULES,
 )
 
@@ -49,22 +50,22 @@ SYNC_LIVENESS: dict = {
 # Security startup validation
 # ---------------------------------------------------------------------------
 def validate_security_startup() -> None:
-    if not API_KEY:
+    if not _config.API_KEY:
         raise RuntimeError("API_KEY is required.")
 
-    if DASHBOARD_PASSWORD == "admin":
+    if _config.DASHBOARD_PASSWORD == "admin":
         raise RuntimeError(
             "DASHBOARD_PASSWORD must be explicitly set and cannot remain the default 'admin'."
         )
 
-    if not DASHBOARD_SESSION_SECRET:
+    if not _config.DASHBOARD_SESSION_SECRET:
         raise RuntimeError("DASHBOARD_SESSION_SECRET is required and must be explicitly set.")
 
     weak_session_secrets = {"change-this-dashboard-secret", "admin", "password", "123456"}
-    if DASHBOARD_SESSION_SECRET.lower() in weak_session_secrets:
+    if _config.DASHBOARD_SESSION_SECRET.lower() in weak_session_secrets:
         raise RuntimeError("DASHBOARD_SESSION_SECRET is too weak. Set a strong random secret.")
 
-    if DASHBOARD_SESSION_SECRET == API_KEY:
+    if _config.DASHBOARD_SESSION_SECRET == _config.API_KEY:
         raise RuntimeError("DASHBOARD_SESSION_SECRET must not reuse API_KEY.")
 
 
@@ -75,7 +76,7 @@ def _build_dashboard_session_token(username: str) -> str:
     issued_at = str(int(time.time()))
     payload = f"{username}:{issued_at}"
     signature = hmac.new(
-        DASHBOARD_SESSION_SECRET.encode("utf-8"),
+        _config.DASHBOARD_SESSION_SECRET.encode("utf-8"),
         payload.encode("utf-8"),
         hashlib.sha256,
     ).hexdigest()
@@ -93,7 +94,7 @@ def _validate_dashboard_session_token(token: str | None) -> str | None:
         username, issued_at_str, signature = decoded.split(":", 2)
         payload = f"{username}:{issued_at_str}"
         expected_signature = hmac.new(
-            DASHBOARD_SESSION_SECRET.encode("utf-8"),
+            _config.DASHBOARD_SESSION_SECRET.encode("utf-8"),
             payload.encode("utf-8"),
             hashlib.sha256,
         ).hexdigest()
@@ -124,7 +125,7 @@ def get_current_username(
         return session_user
 
     if credentials is not None:
-        correct_password = secrets.compare_digest(credentials.password, DASHBOARD_PASSWORD)
+        correct_password = secrets.compare_digest(credentials.password, _config.DASHBOARD_PASSWORD)
         correct_username = secrets.compare_digest(credentials.username, "admin")
         if correct_username and correct_password:
             session_token = _build_dashboard_session_token(credentials.username)
@@ -148,7 +149,7 @@ def get_current_username(
 def require_api_key(request: Request) -> None:
     """Require X-API-Key header. Query-param fallback removed for security (key leaks in logs)."""
     key = request.headers.get("x-api-key")
-    if not key or not API_KEY or not secrets.compare_digest(key, API_KEY):
+    if not key or not _config.API_KEY or not secrets.compare_digest(key, _config.API_KEY):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized"
         )
