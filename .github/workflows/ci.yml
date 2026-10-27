@@ -91,6 +91,7 @@ jobs:
           DASHBOARD_SESSION_SECRET: test-session-secret-very-strong
           DB_HOST: localhost
           DB_PASSWORD: test
+          REDIS_PASSWORD: ci-test-redis-pass
           EMBEDDING_DIM: ""
         run: |
           python -m unittest tests.test_main_core tests.test_modules tests.test_integration -v
@@ -227,7 +228,13 @@ jobs:
           echo "DASHBOARD_SESSION_SECRET=ci-tes...gh" >> .env
           echo "REDIS_PASSWORD=ci-tes...ss" >> .env
           echo "AI_PROVIDER=ollama" >> .env
-          docker compose up -d db api1 api2 caddy redis pgbouncer
+          docker compose up -d db api1 api2 caddy redis pgbouncer || {
+            echo "=== compose up failed — dumping container logs ==="
+            docker compose ps -a
+            docker compose logs --tail=60 db
+            docker compose logs --tail=30 redis pgbouncer
+            exit 1
+          }
           for i in $(seq 1 30); do
             sleep 5
             if curl -sf http://localhost:8010/healthz > /dev/null 2>&1; then
