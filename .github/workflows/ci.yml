@@ -84,6 +84,22 @@ jobs:
         run: |
           python -m unittest tests.test_data_loss_prevention -v
 
+      - name: Create .env for docker compose
+        run: |
+          # .env is git-ignored, but docker compose (used by the integration
+          # test) requires it via `env_file`. Values are CI-only test values.
+          cat > .env <<'EOF'
+          API_KEY=test-key-123
+          DB_PASSWORD=test
+          REDIS_PASSWORD=ci-test-redis-pass
+          DASHBOARD_PASSWORD=strong-pass!@#
+          DASHBOARD_SESSION_SECRET=test-session-secret-very-strong
+          AI_PROVIDER=ollama
+          OLLAMA_HOST=
+          SYNC_DIR=/app/sync
+          EOF
+          echo "  .env created ($(wc -l < .env) lines)"
+
       - name: Run standalone integration tests (gate)
         env:
           API_KEY: test-key-123
