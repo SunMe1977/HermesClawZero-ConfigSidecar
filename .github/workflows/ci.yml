@@ -167,7 +167,9 @@ jobs:
           echo "REDIS_PASSWORD=ci-test-redis-pass" >> .env
           echo "AI_PROVIDER=ollama" >> .env
           echo "OLLAMA_HOST=http://host.docker.internal:11434" >> .env
-          docker compose -f docker-compose.yml up -d db api1
+          # api1 alone publishes no ports (Caddy fronts it on :8010), so the
+          # health check and the endpoint tests need the full chain.
+          docker compose -f docker-compose.yml up -d db api1 caddy pgbouncer redis
           echo "Waiting for API to be healthy..."
           for i in $(seq 1 30); do
             sleep 5
@@ -178,7 +180,9 @@ jobs:
             echo "  attempt $i/30..."
             if [ $i -eq 15 ]; then
               echo "--- docker logs (api) ---"
-              docker logs hc-sidecar-api1-1 2>&1 | tail -20
+              docker compose logs --tail=20 api1
+              echo "--- docker logs (caddy) ---"
+              docker compose logs --tail=10 caddy
             fi
           done
 
@@ -289,7 +293,7 @@ jobs:
           DASHBOARD_URL: http://localhost:8010/dashboard
           DASHBOARD_USER: admin
           # Must match the DASHBOARD_PASSWORD written into .env above.
-          DASHBOARD_PASSWORD: ci-test-pass-1234
+          DASHBOARD_PASSWORD: ci-test-dash-!234
         run: |
           curl -sf http://localhost:8010/healthz && echo "Health OK" || { echo "API not healthy"; exit 1; }
           python tests/test_dashboard.py
