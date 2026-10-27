@@ -8,6 +8,7 @@ CI:     pytest tests/test_dashboard.py --browser chromium
 
 import os
 import sys
+import base64
 import subprocess
 import time
 
@@ -26,14 +27,20 @@ except ImportError:
 
 def test_dashboard_loads():
     """Dashboard page loads without error and shows key UI elements."""
+    if not DASHBOARD_PASSWORD:
+        print("SKIP: DASHBOARD_PASSWORD not set")
+        sys.exit(0)
+
+    token = base64.b64encode(
+        f"{DASHBOARD_USER}:{DASHBOARD_PASSWORD}".encode()
+    ).decode()
+
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
-        context = browser.new_context(
-            http_credentials={
-                "username": DASHBOARD_USER,
-                "password": DASHBOARD_PASSWORD,
-            }
-        )
+        # http_credentials only kicks in after the server sends a 401
+        # challenge; sending the Authorization header explicitly is reliable
+        # for every request the page makes.
+        context = browser.new_context(extra_http_headers={"Authorization": f"Basic {token}"})
         page = context.new_page()
         page.set_default_timeout(30000)
 

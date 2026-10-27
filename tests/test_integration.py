@@ -179,7 +179,10 @@ class IntegrationSmokeTest(unittest.TestCase):
             "/timeline?scope_id=integration_test",
             headers=_basic_auth_header(),
         )
-        self.assertIn("results", resp, f"timeline failed: {resp}")
+        # Response shape: {"status": "ok", "timeline": [...], "total": N, ...}
+        self.assertEqual(resp.get("status"), "ok", f"timeline failed: {resp}")
+        self.assertIn("timeline", resp, f"timeline failed: {resp}")
+        self.assertGreater(len(resp["timeline"]), 0, "timeline empty")
 
     def _capture_if_needed(self):
         if not getattr(self, "captured_id", None):
